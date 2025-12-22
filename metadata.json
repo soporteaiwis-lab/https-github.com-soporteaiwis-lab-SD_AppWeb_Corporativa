@@ -1,0 +1,7 @@
+{
+  "name": "SimpleData Corporate Portal",
+  "description": "A comprehensive corporate ecosystem for SimpleData, featuring project management, team insights, weekly reporting, and deep AI integration for productivity.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
