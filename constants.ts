@@ -1,9 +1,9 @@
 import { User, UserRole, Project, Gem, Tool } from './types';
 
-// --- CONFIGURACIÓN DE ENTORNO (.ENV) ---
-// Helper para leer variables en distintos entornos (Vite, CRA, Node)
+// --- CONFIGURACIÓN DE ENTORNO (.ENV & LOCAL STORAGE) ---
+// Helper para leer variables en distintos entornos (Vite, CRA, Node) y LocalStorage
 const getEnvVar = (key: string): string => {
-  // 1. Intento estándar (Node / Webpack / CRA sin prefijo si está configurado)
+  // 1. Intento estándar (Node / Webpack / CRA sin prefijo)
   if (typeof process !== 'undefined' && process.env && process.env[key]) {
     return process.env[key] as string;
   }
@@ -11,7 +11,7 @@ const getEnvVar = (key: string): string => {
   if (typeof process !== 'undefined' && process.env && process.env[`REACT_APP_${key}`]) {
     return process.env[`REACT_APP_${key}`] as string;
   }
-  // 3. Intento Vite (import.meta.env) - Usamos any para evitar error TS si no es vite
+  // 3. Intento Vite (import.meta.env)
   try {
     // @ts-ignore
     if (typeof import.meta !== 'undefined' && import.meta.env) {
@@ -21,17 +21,24 @@ const getEnvVar = (key: string): string => {
       if (import.meta.env[`VITE_${key}`]) return import.meta.env[`VITE_${key}`];
     }
   } catch (e) {
-    // Ignore errors in non-module envs
+    // Ignore errors
+  }
+
+  // 4. FALBACK: Local Storage (Configuración Manual desde Dashboard)
+  // Esto permite que la app funcione si el usuario ingresa las llaves manualmente en la UI
+  if (typeof window !== 'undefined') {
+      const manualKey = localStorage.getItem(`simpledata_env_${key}`);
+      if (manualKey) return manualKey;
   }
   
   return '';
 };
 
 export const APP_CONFIG = {
-  // Busca: API_KEY, REACT_APP_API_KEY, o VITE_API_KEY
+  // Busca: API_KEY, REACT_APP_API_KEY, VITE_API_KEY o localStorage
   GEMINI_API_KEY: getEnvVar('API_KEY'), 
   
-  // Busca: GITHUB_TOKEN, REACT_APP_GITHUB_TOKEN, o VITE_GITHUB_TOKEN
+  // Busca: GITHUB_TOKEN, REACT_APP_GITHUB_TOKEN, VITE_GITHUB_TOKEN o localStorage
   GITHUB_TOKEN: getEnvVar('GITHUB_TOKEN') 
 };
 

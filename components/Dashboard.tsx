@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { User, Project } from '../types';
 import { APP_CONFIG } from '../constants'; // Import to check status
 
@@ -13,6 +13,23 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
   const isGeminiReady = !!APP_CONFIG.GEMINI_API_KEY && APP_CONFIG.GEMINI_API_KEY.length > 5;
   const isGithubReady = !!APP_CONFIG.GITHUB_TOKEN && APP_CONFIG.GITHUB_TOKEN.length > 5;
 
+  // Settings Modal State
+  const [showConfig, setShowConfig] = useState(false);
+  const [manualKeys, setManualKeys] = useState({
+      apiKey: localStorage.getItem('simpledata_env_API_KEY') || '',
+      githubToken: localStorage.getItem('simpledata_env_GITHUB_TOKEN') || ''
+  });
+
+  const handleSaveKeys = () => {
+      if (manualKeys.apiKey) localStorage.setItem('simpledata_env_API_KEY', manualKeys.apiKey);
+      if (manualKeys.githubToken) localStorage.setItem('simpledata_env_GITHUB_TOKEN', manualKeys.githubToken);
+      
+      // Force reload to pick up changes in APP_CONFIG (since it reads on load)
+      if (confirm("Claves guardadas. El sistema se recargará para aplicar los cambios.")) {
+          window.location.reload();
+      }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in print:hidden pb-20 lg:pb-0">
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-2">
@@ -22,16 +39,20 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
         </div>
         <div className="flex gap-4">
              {/* System Status Widget */}
-             <div className="hidden md:flex gap-3 bg-white p-2 px-4 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex items-center gap-2" title={isGeminiReady ? "Gemini AI: Conectado" : "Gemini AI: Sin Llave (.env)"}>
+             <div className="hidden md:flex items-center gap-3 bg-white p-2 px-4 rounded-xl shadow-sm border border-slate-200">
+                <div className="flex items-center gap-2" title={isGeminiReady ? "Gemini AI: Conectado" : "Gemini AI: Sin Llave"}>
                     <div className={`w-2.5 h-2.5 rounded-full ${isGeminiReady ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
                     <span className="text-xs font-bold text-slate-600">AI</span>
                 </div>
-                <div className="w-[1px] bg-slate-200"></div>
-                <div className="flex items-center gap-2" title={isGithubReady ? "GitHub API: Token Configurado" : "GitHub API: Manual (.env)"}>
+                <div className="w-[1px] h-4 bg-slate-200"></div>
+                <div className="flex items-center gap-2" title={isGithubReady ? "GitHub API: Token Configurado" : "GitHub API: Manual"}>
                     <div className={`w-2.5 h-2.5 rounded-full ${isGithubReady ? 'bg-green-500' : 'bg-orange-400'}`}></div>
                     <span className="text-xs font-bold text-slate-600">Git</span>
                 </div>
+                <div className="w-[1px] h-4 bg-slate-200"></div>
+                <button onClick={() => setShowConfig(true)} className="text-slate-400 hover:text-simple-600 transition-colors" title="Configuración Manual de Llaves">
+                    <Icon name="fa-cog" />
+                </button>
              </div>
              
              <div className="text-left lg:text-right w-full lg:w-auto self-center">
@@ -99,6 +120,50 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
           <p className="text-white/80 text-sm">{isGeminiReady ? 'Conexión segura establecida.' : 'Modo Offline (Sin API Key)'}</p>
         </div>
       </div>
+
+      {/* Manual Configuration Modal */}
+      {showConfig && (
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+              <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+                  <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+                      <h3 className="font-bold flex items-center gap-2"><Icon name="fa-cogs" /> Configuración de Sistema</h3>
+                      <button onClick={() => setShowConfig(false)} className="hover:text-red-400"><Icon name="fa-times" /></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                      <p className="text-sm text-slate-500 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                          <Icon name="fa-info-circle" /> Si tu archivo <code>.env</code> no se carga, ingresa tus llaves aquí. Se guardarán localmente en tu navegador.
+                      </p>
+                      
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Gemini API Key (Google AI)</label>
+                          <input 
+                              type="password" 
+                              className="w-full border p-3 rounded-lg font-mono text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-simple-500" 
+                              placeholder="AIzb..." 
+                              value={manualKeys.apiKey}
+                              onChange={e => setManualKeys({...manualKeys, apiKey: e.target.value})}
+                          />
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">GitHub Personal Access Token (PAT)</label>
+                          <input 
+                              type="password" 
+                              className="w-full border p-3 rounded-lg font-mono text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-simple-500" 
+                              placeholder="ghp_..." 
+                              value={manualKeys.githubToken}
+                              onChange={e => setManualKeys({...manualKeys, githubToken: e.target.value})}
+                          />
+                      </div>
+
+                      <div className="pt-4 flex justify-end gap-2">
+                          <button onClick={() => setShowConfig(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                          <button onClick={handleSaveKeys} className="px-6 py-2 bg-simple-600 text-white font-bold rounded-lg hover:bg-simple-700 shadow-lg">Guardar y Recargar</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
