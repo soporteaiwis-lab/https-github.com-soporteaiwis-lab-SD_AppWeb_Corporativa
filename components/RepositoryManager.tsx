@@ -340,7 +340,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       if (activeTab === 'github') {
           setSelectedRepoId(repoId);
           if (!githubToken) {
-              alert("⚠️ Para subir a GitHub, configura tu Token (PAT) primero.");
+              // Automatically show input if empty
               setShowTokenInput(true);
               return;
           }
@@ -465,8 +465,18 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setProgress(80);
           if (!response.ok) {
               const errorData = await response.json();
+              
+              // AUTO-RECOVERY FOR 401 (Invalid Token)
+              if (response.status === 401) {
+                  setGithubToken('');
+                  localStorage.removeItem('simpledata_github_pat');
+                  setUploadState('idle'); // Clear error state immediately
+                  setShowTokenInput(true); // Show input to fix it
+                  // No throw, just stop
+                  return; 
+              }
+
               if (response.status === 422) throw new Error("El archivo ya existe.");
-              if (response.status === 401) throw new Error("Token inválido.");
               throw new Error(errorData.message || "Error desconocido.");
           }
           const data = await response.json();
@@ -664,6 +674,35 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                     </div>
                 )}
 
+                {/* TOKEN INPUT MODAL (RESTORED) */}
+                {showTokenInput && (
+                    <div className="absolute inset-0 z-[100] bg-slate-900/90 flex items-center justify-center p-6 animate-fade-in">
+                        <div className="bg-white rounded-xl w-full max-w-sm p-6 shadow-2xl">
+                            <div className="text-center mb-4">
+                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-2 text-2xl">
+                                    <Icon name="fab fa-github" />
+                                </div>
+                                <h3 className="font-bold text-lg text-slate-800">Conectar GitHub</h3>
+                                <p className="text-sm text-slate-500">Ingresa tu Personal Access Token (PAT) para continuar.</p>
+                            </div>
+                            <input 
+                                type="password" 
+                                className="w-full border p-3 rounded-lg font-mono text-sm mb-4 focus:ring-2 focus:ring-slate-800 outline-none"
+                                placeholder="ghp_..."
+                                value={githubToken}
+                                onChange={e => setGithubToken(e.target.value)}
+                            />
+                            <div className="flex gap-2">
+                                <button onClick={() => setShowTokenInput(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-100 rounded-lg font-bold transition-colors">Cancelar</button>
+                                <button onClick={() => { localStorage.setItem('simpledata_github_pat', githubToken); setShowTokenInput(false); }} className="flex-1 py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-lg">Guardar</button>
+                            </div>
+                            <p className="text-xs text-center mt-4 text-slate-400">
+                                <Icon name="fa-lock" /> Se guardará solo en este navegador.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* UPLOAD PROGRESS OVERLAY */}
                 {uploadState === 'uploading' && (
                     <div className="absolute inset-0 bg-white z-[60] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
@@ -687,7 +726,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">Error</h3>
                         <p className="text-red-500 font-medium mb-6 bg-red-50 p-3 rounded border border-red-100">{uploadStatusMsg || creationLog}</p>
-                        <button onClick={() => { setUploadState('idle'); setCreationStatus('idle'); }} className="px-6 py-2 bg-slate-800 text-white rounded-lg">Volver</button>
+                        
+                        <div className="flex flex-col gap-2 w-full max-w-xs">
+                             <button onClick={() => { setUploadState('idle'); setCreationStatus('idle'); }} className="w-full px-6 py-3 bg-slate-800 text-white rounded-lg font-bold shadow-lg hover:bg-slate-900 transition-colors">Volver</button>
+                             {/* Hint button if error is Auth related */}
+                             {(uploadStatusMsg.toLowerCase().includes('token') || uploadStatusMsg.toLowerCase().includes('auth')) && (
+                                 <button onClick={() => { setUploadState('idle'); setShowTokenInput(true); }} className="w-full px-6 py-3 text-slate-500 hover:bg-slate-100 rounded-lg font-bold transition-colors border border-slate-200">
+                                     <Icon name="fa-key" /> Configurar Token
+                                 </button>
+                             )}
+                        </div>
                     </div>
                 )}
 
