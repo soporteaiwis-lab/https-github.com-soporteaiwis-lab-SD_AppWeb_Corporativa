@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project, Repository, ProjectLog } from '../types';
+import { APP_CONFIG } from '../constants'; // Import Env Config
 
 const Icon = ({ name, className = "" }: { name: string, className?: string }) => (
   <i className={`fa-solid ${name} ${className}`}></i>
@@ -17,8 +18,11 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [activeTab, setActiveTab] = useState<'github' | 'drive'>(initialType);
   const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
   
-  // GitHub Token State (Persisted in LocalStorage for UX)
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('simpledata_github_pat') || '');
+  // GitHub Token Logic: Check ENV first, then LocalStorage
+  const envToken = APP_CONFIG.GITHUB_TOKEN;
+  const isEnvConfigured = !!envToken && envToken.length > 5;
+
+  const [githubToken, setGithubToken] = useState(envToken || localStorage.getItem('simpledata_github_pat') || '');
   const [showTokenInput, setShowTokenInput] = useState(false);
 
   // Add New Repo State
@@ -34,11 +38,12 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const fileInputRef = useRef<HTMLInputElement>(null);
   const repositories = project.repositories?.filter(r => r.type === activeTab) || [];
 
+  // If using manual token (not env), save to local storage
   useEffect(() => {
-      if (githubToken) {
+      if (githubToken && !isEnvConfigured) {
           localStorage.setItem('simpledata_github_pat', githubToken);
       }
-  }, [githubToken]);
+  }, [githubToken, isEnvConfigured]);
 
   const handleAddRepo = () => {
       if (!newRepo.alias || !newRepo.url) return;
@@ -100,7 +105,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setProgress(10);
 
           // 1. Parse Repo URL to get Owner and Repo Name
-          // Supports: https://github.com/owner/repo or https://github.com/owner/repo/tree/main...
           const cleanUrl = repo.url.replace(/\/$/, "").replace(/\.git$/, "");
           const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
           
@@ -115,7 +119,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               reader.readAsDataURL(file);
               reader.onload = () => {
                   const result = reader.result as string;
-                  // Remove "data:*/*;base64," prefix for GitHub API
                   const base64 = result.split(',')[1];
                   resolve(base64);
               };
@@ -125,7 +128,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
           // 3. API PUT Request (Create/Update File)
           setUploadStatusMsg(`Subiendo ${file.name} a ${owner}/${repoName}...`);
-          const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; // Upload to root for now
+          const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; 
           
           const response = await fetch(apiUrl, {
               method: 'PUT',
@@ -136,9 +139,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               },
               body: JSON.stringify({
                   message: `Add ${file.name} via SimpleData Portal`,
-                  content: base64Content,
-                  // Note: If updating an existing file, 'sha' is required. 
-                  // For this prototype, we assume new files or overwrite blindly (which API might reject without SHA, but let's try basic create)
+                  content: base64Content
               })
           });
 
@@ -146,9 +147,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
           if (!response.ok) {
               const errorData = await response.json();
-              if (response.status === 422) throw new Error("El archivo ya existe o hubo un conflicto de validación (SHA).");
-              if (response.status === 401) throw new Error("Token inválido o expirado.");
-              if (response.status === 404) throw new Error("Repositorio no encontrado o sin permisos.");
+              if (response.status === 422) throw new Error("El archivo ya existe o hubo un conflicto (SHA).");
+              if (response.status === 401) throw new Error("Token inválido o expirado. Revise su configuración.");
+              if (response.status === 404) throw new Error("Repositorio no encontrado o sin permisos de escritura.");
               throw new Error(errorData.message || "Error desconocido de GitHub.");
           }
 
@@ -164,7 +165,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   };
 
   const simulateDriveUpload = (file: File) => {
-      // Keep existing simulation for Drive since we can't do direct upload without complex OAuth
       let pct = 0;
       const interval = setInterval(() => {
           pct += 10;
@@ -250,7 +250,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                         </div>
                         <h3 className="text-xl font-bold text-slate-800 mb-2">Sincronizando...</h3>
                         <p className="text-slate-500 mb-6 font-medium">{uploadStatusMsg}</p>
-                        
                         <div className="w-full max-w-md bg-slate-100 rounded-full h-4 overflow-hidden mx-auto">
                             <div className={`h-full bg-${themeColor}-600 transition-all duration-200`} style={{ width: `${progress}%` }}></div>
                         </div>
@@ -285,15 +284,15 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                     <div className="space-y-4">
                         {activeTab === 'github' && (
                             <div className="bg-slate-800 text-slate-300 p-4 rounded-xl mb-4 text-xs border border-slate-700">
-                                <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowTokenInput(!showTokenInput)}>
+                                <div className="flex justify-between items-center cursor-pointer" onClick={() => !isEnvConfigured && setShowTokenInput(!showTokenInput)}>
                                     <div className="flex items-center gap-2">
-                                        <Icon name="fa-key" className="text-yellow-500" />
+                                        <Icon name="fa-key" className={isEnvConfigured ? "text-green-500" : "text-yellow-500"} />
                                         <span className="font-bold text-white">Configuración API GitHub</span>
-                                        {githubToken ? <span className="text-green-400">(Token Activo)</span> : <span className="text-red-400">(Requerido)</span>}
+                                        {githubToken ? <span className="text-green-400">({isEnvConfigured ? 'Cargado desde .ENV' : 'Token Activo'})</span> : <span className="text-red-400">(Requerido)</span>}
                                     </div>
-                                    <Icon name={showTokenInput ? "fa-chevron-up" : "fa-chevron-down"} />
+                                    {!isEnvConfigured && <Icon name={showTokenInput ? "fa-chevron-up" : "fa-chevron-down"} />}
                                 </div>
-                                {showTokenInput && (
+                                {showTokenInput && !isEnvConfigured && (
                                     <div className="mt-3 animate-fade-in">
                                         <p className="mb-2">Para subir archivos directo, ingresa tu <a href="https://github.com/settings/tokens" target="_blank" className="underline text-blue-400">Personal Access Token (Classic)</a> con permisos de <code>repo</code>.</p>
                                         <input 
@@ -305,6 +304,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                         />
                                         <p className="mt-1 text-slate-500">Se guardará localmente en tu navegador.</p>
                                     </div>
+                                )}
+                                {isEnvConfigured && (
+                                    <p className="mt-2 text-slate-500 italic">El token ha sido configurado globalmente por el administrador del sistema.</p>
                                 )}
                             </div>
                         )}

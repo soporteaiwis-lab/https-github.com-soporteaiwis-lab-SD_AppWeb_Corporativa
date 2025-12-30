@@ -1,11 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
+import { APP_CONFIG } from '../constants';
 
 // Helper to check for API key validation
 const getAIClient = () => {
   try {
-    const apiKey = process.env.API_KEY; 
-    // Validation: Must exist, not be the placeholder, and have reasonable length
-    if (!apiKey || apiKey.includes("INSERT") || apiKey.length < 20) return null;
+    // PRIMORDIAL: Use the Key from Process.Env (mapped in APP_CONFIG)
+    const apiKey = process.env.API_KEY || APP_CONFIG.GEMINI_API_KEY; 
+    
+    // Validation: Must exist
+    if (!apiKey) return null;
     return new GoogleGenAI({ apiKey });
   } catch (e) {
     return null;
@@ -15,7 +18,7 @@ const getAIClient = () => {
 export const generateText = async (prompt: string, systemInstruction?: string): Promise<string> => {
   const ai = getAIClient();
 
-  // 1. TRY REAL API (Only if client is strictly valid)
+  // 1. TRY REAL API (Primary Method)
   if (ai) {
     try {
       const response = await ai.models.generateContent({
@@ -25,11 +28,12 @@ export const generateText = async (prompt: string, systemInstruction?: string): 
       });
       if (response.text) return response.text;
     } catch (error) {
-      // Catch network/api errors silently and fallthrough to simulation
+      // If API fails (e.g. quota, network), fallback silently to simulation
+      console.warn("Gemini API Error (Fallback active):", error);
     }
   }
 
-  // 2. IMMEDIATE PROFESSIONAL SIMULATION (Fallback guaranteed)
+  // 2. FALLBACK SIMULATION (Only if Env Var is missing or API fails)
   return new Promise((resolve) => {
     setTimeout(() => {
       // Scenario A: Refining Text
@@ -42,7 +46,7 @@ export const generateText = async (prompt: string, systemInstruction?: string): 
       } 
       // Scenario C: Chat / General
       else {
-        resolve(`Entendido. He procesado tu solicitud: "${prompt}".\n(Respuesta generada por Sistema Inteligente SimpleData).`);
+        resolve(`Entendido. He procesado tu solicitud: "${prompt}".\n(Respuesta generada por Sistema Inteligente SimpleData - Modo Offline).`);
       }
     }, 500); 
   });

@@ -1,5 +1,17 @@
 import { User, UserRole, Project, Gem, Tool } from './types';
 
+// --- CONFIGURACIÓN DE ENTORNO (.ENV) ---
+// En tu entorno local, crea un archivo .env en la raíz.
+// El sistema leerá automáticamente estas variables.
+export const APP_CONFIG = {
+  // Leída desde process.env.API_KEY (Gemini)
+  GEMINI_API_KEY: process.env.API_KEY || '', 
+  
+  // Leída desde process.env.GITHUB_TOKEN (GitHub PAT)
+  // Si estás en local y no usas .env, puedes poner el token aquí temporalmente (no recomendado para prod)
+  GITHUB_TOKEN: process.env.GITHUB_TOKEN || '' 
+};
+
 // Real SimpleData Team
 export const INITIAL_USERS: User[] = [
   {
