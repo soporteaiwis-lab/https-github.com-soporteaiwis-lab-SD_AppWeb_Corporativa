@@ -32,10 +32,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [activeTab, setActiveTab] = useState<'github' | 'drive'>(initialType);
   const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
   
-  // GitHub Token Logic
-  const envToken = APP_CONFIG.GITHUB_TOKEN;
-  const isEnvConfigured = !!envToken && envToken.length > 5;
-  const [githubToken, setGithubToken] = useState(envToken || localStorage.getItem('simpledata_github_pat') || '');
+  // --- GITHUB TOKEN LOGIC (FIXED) ---
+  // Helper to get the freshest token available
+  const getStoredGithubToken = () => {
+      return APP_CONFIG.GITHUB_TOKEN || localStorage.getItem('simpledata_github_pat') || localStorage.getItem('simpledata_env_GITHUB_TOKEN') || '';
+  };
+
+  const [githubToken, setGithubToken] = useState(getStoredGithubToken());
   const [showTokenInput, setShowTokenInput] = useState(false);
 
   // Drive Token State
@@ -75,12 +78,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const fileInputRef = useRef<HTMLInputElement>(null);
   const repositories = project.repositories?.filter(r => r.type === activeTab) || [];
 
-  // If using manual token (not env), save to local storage
+  // Update internal token state if local storage changes (redundancy check)
   useEffect(() => {
-      if (githubToken && !isEnvConfigured) {
-          localStorage.setItem('simpledata_github_pat', githubToken);
+      const current = getStoredGithubToken();
+      if (current && current !== githubToken) {
+          setGithubToken(current);
       }
-  }, [githubToken, isEnvConfigured]);
+  }, []);
 
   // --- HELPERS ---
 
@@ -339,11 +343,17 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       // 1. GITHUB FLOW
       if (activeTab === 'github') {
           setSelectedRepoId(repoId);
-          if (!githubToken) {
-              // Automatically show input if empty
+          // Check for token from ALL sources before blocking
+          const effectiveToken = getStoredGithubToken();
+          
+          if (!effectiveToken || effectiveToken.length < 5) {
+              // Automatically show input if really empty
               setShowTokenInput(true);
               return;
           }
+          // If we have token, ensure state is synced and open file dialog
+          if (effectiveToken !== githubToken) setGithubToken(effectiveToken);
+          
           if (fileInputRef.current) fileInputRef.current.click();
           return;
       }
@@ -426,16 +436,22 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       }
   };
 
-  // --- REAL GITHUB API UPLOAD ---
+  // --- REAL GITHUB API UPLOAD (CORRECTED) ---
   const uploadToGitHubReal = async (file: File, repo: Repository) => {
       try {
+          // ENSURE TOKEN IS FRESH
+          const effectiveToken = getStoredGithubToken();
+          if (!effectiveToken) throw new Error("Token de GitHub no encontrado.");
+
           setUploadStatusMsg('Conectando con GitHub API...');
           setProgress(10);
+          
           const cleanUrl = repo.url.replace(/\/$/, "").replace(/\.git$/, "");
           const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-          if (!match) throw new Error("URL de repositorio inválida.");
+          if (!match) throw new Error("URL de repositorio inválida. Debe ser github.com/user/repo");
           const owner = match[1];
           const repoName = match[2];
+          
           setUploadStatusMsg('Procesando archivo...');
           const base64Content = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
@@ -447,13 +463,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               };
               reader.onerror = error => reject(error);
           });
+          
           setProgress(40);
           setUploadStatusMsg(`Subiendo a ${owner}/${repoName}...`);
+          
           const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; 
+          
           const response = await fetch(apiUrl, {
               method: 'PUT',
               headers: {
-                  'Authorization': `Bearer ${githubToken}`,
+                  'Authorization': `Bearer ${effectiveToken}`, // USE EFFECTIVE TOKEN
                   'Content-Type': 'application/json',
                   'Accept': 'application/vnd.github.v3+json'
               },
@@ -462,7 +481,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                   content: base64Content
               })
           });
+          
           setProgress(80);
+          
           if (!response.ok) {
               const errorData = await response.json();
               
@@ -470,15 +491,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               if (response.status === 401) {
                   setGithubToken('');
                   localStorage.removeItem('simpledata_github_pat');
-                  setUploadState('idle'); // Clear error state immediately
-                  setShowTokenInput(true); // Show input to fix it
-                  // No throw, just stop
+                  localStorage.removeItem('simpledata_env_GITHUB_TOKEN'); // Clear Env too
+                  setUploadState('idle'); 
+                  setShowTokenInput(true); // Ask again
                   return; 
               }
 
-              if (response.status === 422) throw new Error("El archivo ya existe.");
-              throw new Error(errorData.message || "Error desconocido.");
+              if (response.status === 422) throw new Error("El archivo ya existe o hay un conflicto de versión.");
+              throw new Error(errorData.message || "Error desconocido en API GitHub.");
           }
+          
           const data = await response.json();
           setProgress(100);
           completeUpload(file, repo, data.content?.html_url || repo.url);
@@ -690,11 +712,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                 className="w-full border p-3 rounded-lg font-mono text-sm mb-4 focus:ring-2 focus:ring-slate-800 outline-none"
                                 placeholder="ghp_..."
                                 value={githubToken}
-                                onChange={e => setGithubToken(e.target.value)}
+                                onChange={e => {
+                                    setGithubToken(e.target.value);
+                                    // Also update local storage immediately to persist across reloads
+                                    localStorage.setItem('simpledata_github_pat', e.target.value);
+                                    localStorage.setItem('simpledata_env_GITHUB_TOKEN', e.target.value);
+                                }}
                             />
                             <div className="flex gap-2">
                                 <button onClick={() => setShowTokenInput(false)} className="flex-1 py-3 text-slate-500 hover:bg-slate-100 rounded-lg font-bold transition-colors">Cancelar</button>
-                                <button onClick={() => { localStorage.setItem('simpledata_github_pat', githubToken); setShowTokenInput(false); }} className="flex-1 py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-lg">Guardar</button>
+                                <button onClick={() => setShowTokenInput(false)} className="flex-1 py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 transition-colors shadow-lg">Guardar</button>
                             </div>
                             <p className="text-xs text-center mt-4 text-slate-400">
                                 <Icon name="fa-lock" /> Se guardará solo en este navegador.
