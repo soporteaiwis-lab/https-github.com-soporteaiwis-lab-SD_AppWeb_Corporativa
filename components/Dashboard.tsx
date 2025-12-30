@@ -57,6 +57,9 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
       }
   };
 
+  // Helper to get current origin for Google Console
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+
   return (
     <div className="space-y-6 animate-fade-in print:hidden pb-20 lg:pb-0">
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-2">
@@ -205,6 +208,24 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                               value={manualKeys.googleClientId}
                               onChange={e => setManualKeys({...manualKeys, googleClientId: e.target.value})}
                           />
+                          
+                          {/* DYNAMIC HELP BOX FOR REDIRECT_URI_MISMATCH */}
+                          <div className="mt-3 bg-red-50 p-3 rounded border border-red-100 text-xs">
+                             <p className="font-bold text-red-600 mb-1"><Icon name="fa-exclamation-triangle" /> ¿Error "redirect_uri_mismatch"?</p>
+                             <p className="text-slate-600 mb-2">Debes agregar <strong>exactamente</strong> esta URL en "Orígenes de JavaScript autorizados" en tu consola de Google:</p>
+                             <div className="flex gap-2">
+                                <code className="bg-white border border-slate-300 p-1.5 rounded flex-1 truncate font-mono select-all">
+                                    {currentOrigin}
+                                </code>
+                                <button 
+                                    onClick={() => navigator.clipboard.writeText(currentOrigin)}
+                                    className="bg-slate-200 hover:bg-slate-300 px-2 rounded text-slate-600 font-bold"
+                                    title="Copiar URL"
+                                >
+                                    <Icon name="fa-copy" />
+                                </button>
+                             </div>
+                          </div>
                       </div>
 
                       <div className="pt-4 flex justify-end gap-2">
