@@ -192,7 +192,12 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-2">
                            <Icon name="fab fa-google-drive" /> Google OAuth Client ID (Para Drive Uploads)
                         </label>
-                        <p className="text-[10px] text-slate-400 mb-2">Requerido para subir archivos directo a Drive. Créalo en Google Cloud Console.</p>
+                        <p className="text-[10px] text-slate-400 mb-2">
+                           Requerido para subir archivos directo a Drive. 
+                           <a href="https://console.cloud.google.com/apis/credentials" target="_blank" className="text-simple-600 underline ml-1 font-bold">
+                               Créalo aquí (Google Cloud Console)
+                           </a>.
+                        </p>
                         <input 
                               type="text" 
                               className="w-full border p-3 rounded-lg font-mono text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-simple-500" 
