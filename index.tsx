@@ -152,13 +152,14 @@ const App = () => {
           {safeRoute === AppRoute.DASHBOARD && <Dashboard currentUser={user} projects={dbProjects} />}
           {safeRoute === AppRoute.PROJECTS && <ProjectsView projects={dbProjects} users={dbUsers} currentUser={user} onAddProject={handleAddProject} onDeleteProject={handleDeleteProject} onUpdateProject={handleUpdateProject} />}
           {safeRoute === AppRoute.GEMS && <GemsView gems={dbGems} onAddGem={handleAddGem} />}
-          {safeRoute === AppRoute.TEAM && <TeamView users={dbUsers} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} />}
+          {safeRoute === AppRoute.TEAM && <TeamView users={dbUsers} currentUser={user} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {safeRoute === AppRoute.REPORTS && <ReportsView currentUser={user} projects={dbProjects} onUpdateProject={handleUpdateProject} />}
           
           {/* Admin Panel Route */}
           {safeRoute === AppRoute.ADMIN && (
               <AdminUsersView 
                   users={dbUsers} 
+                  projects={dbProjects}
                   onAddUser={handleAddUser} 
                   onUpdateUser={handleUpdateUser} 
                   onDeleteUser={handleDeleteUser} 
@@ -168,7 +169,7 @@ const App = () => {
       </main>
 
       {/* Mobile Bottom Nav (VISIBLE ONLY ON MOBILE via lg:hidden) */}
-      <MobileNav currentRoute={safeRoute} onNavigate={handleNavigate} />
+      <MobileNav currentRoute={safeRoute} onNavigate={handleNavigate} currentUser={user} />
 
       {/* Tools Modal (Global Overlay) */}
       {isToolsOpen && <ToolsModal onClose={() => setIsToolsOpen(false)} />}

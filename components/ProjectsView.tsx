@@ -34,8 +34,18 @@ export const ProjectsView = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{file: File, projectId: string, type: 'drive' | 'github'} | null>(null);
 
+  // Expanded New Project State
   const [newProject, setNewProject] = useState<Partial<Project>>({
-    name: '', client: '', status: 'En Curso', progress: 0, description: '', driveLink: '', githubLink: 'https://github.com/soporteaiwis-lab/SIMPLEDATA-APP'
+    name: '', 
+    client: '', 
+    status: 'En Curso', 
+    progress: 0, 
+    description: '', 
+    driveLink: '', 
+    githubLink: 'https://github.com/soporteaiwis-lab/SIMPLEDATA-APP',
+    startDate: new Date().toISOString().split('T')[0],
+    deadline: new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
+    teamIds: []
   });
 
   const [editProjectData, setEditProjectData] = useState<Partial<Project>>({});
@@ -53,19 +63,34 @@ export const ProjectsView = ({
       progress: newProject.progress || 0,
       deadline: newProject.deadline || new Date().toISOString(),
       startDate: newProject.startDate || new Date().toISOString(),
-      leadId: newProject.leadId || users[0].id,
-      teamIds: [],
+      leadId: newProject.leadId || currentUser.id,
+      teamIds: newProject.teamIds || [],
       technologies: [],
       isOngoing: newProject.status === 'En Curso',
       report: newProject.status === 'En Curso',
-      year: parseInt(newProject.year as any) || new Date().getFullYear(),
+      year: parseInt(newProject.startDate?.split('-')[0] || '2025'),
       logs: [],
       driveLink: newProject.driveLink || '',
       githubLink: newProject.githubLink || ''
     };
     onAddProject(project);
     setShowCreateModal(false);
-    setNewProject({ name: '', client: '', status: 'En Curso', progress: 0, description: '', driveLink: '', githubLink: 'https://github.com/soporteaiwis-lab/SIMPLEDATA-APP' });
+    // Reset form
+    setNewProject({ 
+        name: '', client: '', status: 'En Curso', progress: 0, description: '', driveLink: '', githubLink: 'https://github.com/soporteaiwis-lab/SIMPLEDATA-APP',
+        startDate: new Date().toISOString().split('T')[0],
+        deadline: '',
+        teamIds: []
+    });
+  };
+
+  const toggleNewProjectTeamMember = (userId: string) => {
+      const current = newProject.teamIds || [];
+      if (current.includes(userId)) {
+          setNewProject({ ...newProject, teamIds: current.filter(id => id !== userId) });
+      } else {
+          setNewProject({ ...newProject, teamIds: [...current, userId] });
+      }
   };
 
   const handleOpenEdit = (p: Project) => { setSelectedProject(p); setEditProjectData({ ...p }); setShowEditModal(true); };
@@ -197,15 +222,52 @@ export const ProjectsView = ({
       {/* Create/Edit Modal */}
       {(showCreateModal || showEditModal) && (
         <div className="fixed inset-0 z-[60] bg-white md:bg-black/50 flex flex-col md:justify-center md:items-center">
-          <div className="w-full h-full md:h-auto md:max-w-[600px] bg-white md:rounded-2xl flex flex-col shadow-2xl">
+          <div className="w-full h-full md:h-auto md:max-w-[700px] bg-white md:rounded-2xl flex flex-col shadow-2xl">
              <div className="p-4 border-b flex justify-between items-center bg-slate-50 md:bg-white md:rounded-t-2xl">
                 <h3 className="text-lg font-bold">{showEditModal ? 'Editar Proyecto' : 'Nuevo Proyecto'}</h3>
                 <button onClick={() => {setShowCreateModal(false); setShowEditModal(false);}} className="w-8 h-8 flex items-center justify-center bg-slate-200 rounded-full"><Icon name="fa-times"/></button>
              </div>
-             <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                 <input className="w-full border p-3 rounded-lg" placeholder="Nombre Proyecto" value={showEditModal ? editProjectData.name : newProject.name} onChange={e => showEditModal ? setEditProjectData({...editProjectData, name: e.target.value}) : setNewProject({...newProject, name: e.target.value})} />
-                 <input className="w-full border p-3 rounded-lg" placeholder="Cliente" value={showEditModal ? editProjectData.client : newProject.client} onChange={e => showEditModal ? setEditProjectData({...editProjectData, client: e.target.value}) : setNewProject({...newProject, client: e.target.value})} />
-                 <textarea className="w-full border p-3 rounded-lg h-32" placeholder="Descripción" value={showEditModal ? editProjectData.description : newProject.description} onChange={e => showEditModal ? setEditProjectData({...editProjectData, description: e.target.value}) : setNewProject({...newProject, description: e.target.value})} />
+             <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                 {/* Basic Info */}
+                 <div className="space-y-4">
+                     <h4 className="text-sm font-bold text-slate-400 uppercase">Información General</h4>
+                     <input className="w-full border p-3 rounded-lg" placeholder="Nombre Proyecto" value={showEditModal ? editProjectData.name : newProject.name} onChange={e => showEditModal ? setEditProjectData({...editProjectData, name: e.target.value}) : setNewProject({...newProject, name: e.target.value})} />
+                     <input className="w-full border p-3 rounded-lg" placeholder="Cliente" value={showEditModal ? editProjectData.client : newProject.client} onChange={e => showEditModal ? setEditProjectData({...editProjectData, client: e.target.value}) : setNewProject({...newProject, client: e.target.value})} />
+                 </div>
+
+                 {/* Dates */}
+                 <div className="grid grid-cols-2 gap-4">
+                     <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Inicio</label>
+                         <input type="date" className="w-full border p-3 rounded-lg" value={(showEditModal ? editProjectData.startDate : newProject.startDate) || ''} onChange={e => showEditModal ? setEditProjectData({...editProjectData, startDate: e.target.value}) : setNewProject({...newProject, startDate: e.target.value})} />
+                     </div>
+                     <div>
+                         <label className="block text-xs font-bold text-slate-500 mb-1">Fecha Término (Deadline)</label>
+                         <input type="date" className="w-full border p-3 rounded-lg" value={(showEditModal ? editProjectData.deadline : newProject.deadline) || ''} onChange={e => showEditModal ? setEditProjectData({...editProjectData, deadline: e.target.value}) : setNewProject({...newProject, deadline: e.target.value})} />
+                     </div>
+                 </div>
+
+                 {/* Description */}
+                 <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">Descripción</label>
+                    <textarea className="w-full border p-3 rounded-lg h-24" placeholder="Detalles del proyecto..." value={showEditModal ? editProjectData.description : newProject.description} onChange={e => showEditModal ? setEditProjectData({...editProjectData, description: e.target.value}) : setNewProject({...newProject, description: e.target.value})} />
+                 </div>
+
+                 {/* Team Selection (Only for New Project Mode for simplicity, Edit uses specific Team Modal) */}
+                 {!showEditModal && (
+                     <div>
+                         <h4 className="text-sm font-bold text-slate-400 uppercase mb-2">Asignar Equipo Inicial</h4>
+                         <div className="border rounded-lg p-2 max-h-40 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-2">
+                             {users.map(u => (
+                                 <label key={u.id} className={`flex items-center gap-2 p-2 rounded cursor-pointer border ${newProject.teamIds?.includes(u.id) ? 'bg-simple-50 border-simple-200' : 'border-transparent hover:bg-slate-50'}`}>
+                                     <input type="checkbox" checked={newProject.teamIds?.includes(u.id)} onChange={() => toggleNewProjectTeamMember(u.id)} className="rounded text-simple-600 focus:ring-simple-500" />
+                                     <img src={u.avatar} className="w-6 h-6 rounded-full" />
+                                     <span className="text-sm">{u.name}</span>
+                                 </label>
+                             ))}
+                         </div>
+                     </div>
+                 )}
              </div>
              <div className="p-4 border-t bg-slate-50 md:rounded-b-2xl">
                 <button onClick={showEditModal ? handleUpdate : handleCreate} className="w-full py-3 bg-simple-600 text-white font-bold rounded-lg shadow-lg">Guardar</button>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, UserRole } from '../types';
+import { User, UserRole, Project } from '../types';
 
 const Icon = ({ name, className = "" }: { name: string, className?: string }) => (
   <i className={`fa-solid ${name} ${className}`}></i>
@@ -7,11 +7,13 @@ const Icon = ({ name, className = "" }: { name: string, className?: string }) =>
 
 export const AdminUsersView = ({ 
   users, 
+  projects,
   onUpdateUser, 
   onDeleteUser, 
   onAddUser 
 }: { 
   users: User[], 
+  projects: Project[],
   onUpdateUser: (u: User) => void, 
   onDeleteUser: (id: string) => void,
   onAddUser: (u: User) => void
@@ -22,6 +24,15 @@ export const AdminUsersView = ({
   // State for the form
   const [formData, setFormData] = useState<Partial<User>>({});
   const [passwordVisible, setPasswordVisible] = useState(false);
+
+  // Helper to find project names
+  const getUserProjectNames = (userProjectIds: string[]) => {
+      if (!userProjectIds || userProjectIds.length === 0) return "Sin asignación";
+      return userProjectIds.map(pid => {
+          const proj = projects.find(p => p.id === pid);
+          return proj ? proj.name : pid;
+      }).join(', ');
+  };
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
@@ -66,28 +77,29 @@ export const AdminUsersView = ({
   };
 
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
-      <div className="flex justify-between items-center bg-red-900/5 border border-red-900/10 p-6 rounded-xl">
+    <div className="space-y-6 pb-24 md:pb-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-red-900/5 border border-red-900/10 p-6 rounded-xl gap-4">
         <div>
             <h2 className="text-2xl font-bold text-red-900 flex items-center gap-2">
                 <Icon name="fa-user-shield" /> Panel de Administración (Root)
             </h2>
-            <p className="text-red-700/60 text-sm mt-1">Gestión de base de datos de colaboradores SimpleData</p>
+            <p className="text-red-700/60 text-sm mt-1">Gestión total de colaboradores y seguridad.</p>
         </div>
-        <button onClick={handleCreate} className="bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2">
+        <button onClick={handleCreate} className="w-full md:w-auto bg-red-700 hover:bg-red-800 text-white px-4 py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2">
             <Icon name="fa-user-plus" /> Agregar Usuario
         </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="p-4 font-bold text-slate-700">Usuario</th>
                 <th className="p-4 font-bold text-slate-700">Email (ID)</th>
                 <th className="p-4 font-bold text-slate-700">Contraseña</th>
                 <th className="p-4 font-bold text-slate-700">Rol</th>
+                <th className="p-4 font-bold text-slate-700">Proyectos Activos</th>
                 <th className="p-4 font-bold text-slate-700 text-center">Acciones</th>
               </tr>
             </thead>
@@ -108,6 +120,9 @@ export const AdminUsersView = ({
                       <span className={`px-2 py-1 rounded text-xs font-bold ${user.role === UserRole.ADMIN ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
                           {user.role}
                       </span>
+                  </td>
+                  <td className="p-4 text-xs text-slate-500 max-w-[200px] truncate" title={getUserProjectNames(user.projects)}>
+                      {getUserProjectNames(user.projects)}
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex justify-center gap-2">
