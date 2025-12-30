@@ -2,9 +2,9 @@ import { User, Project, Gem, ProjectLog } from '../types';
 import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS } from '../constants';
 
 // Local Storage Keys
-const USERS_KEY = 'simpledata_users_v4'; // Bumped version to v4 to trigger clean merge logic
-const PROJECTS_KEY = 'simpledata_projects_v4';
-const GEMS_KEY = 'simpledata_gems_v4';
+const USERS_KEY = 'simpledata_users_v5'; // Increment version to force update
+const PROJECTS_KEY = 'simpledata_projects_v5';
+const GEMS_KEY = 'simpledata_gems_v5';
 
 // Helper to simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -29,87 +29,71 @@ class DBService {
     let localGems: Gem[] = savedGems ? JSON.parse(savedGems) : [];
 
     // 2. SMART MERGE STRATEGY (Users)
-    // We want to keep user-created users, but also ensure INITIAL_USERS from code are present and updated.
     const mergedUsersMap = new Map<string, User>();
-
-    // First, load local users into map
+    // First local
     localUsers.forEach(u => mergedUsersMap.set(u.id, u));
-
-    // Then, merge INITIAL_USERS
+    // Then code (Initial) overrides critical structural fields to ensure consistency
     INITIAL_USERS.forEach(initUser => {
         const existingUser = mergedUsersMap.get(initUser.id);
         if (existingUser) {
-            // User exists locally. We merge critical fields that might have changed in code (like default project assignments)
-            // But we preserve fields that might be user-edited (like custom skills added in UI)
-            
-            // Merge Projects: Union of existing IDs and Initial IDs (Deduplicated)
-            const combinedProjects = Array.from(new Set([...existingUser.projects, ...initUser.projects]));
+            // MERGE: Keep local changes but FORCE project list sync from code if it's the default user
+            // This fixes the issue where Armin shows 2 projects instead of 4
+            const combinedProjects = Array.from(new Set([...initUser.projects, ...existingUser.projects]));
             
             mergedUsersMap.set(initUser.id, {
-                ...existingUser, // Keep local changes
-                projects: combinedProjects, // Ensure new code-level project assignments are added
-                // Update role/email/name from code to ensure fixes apply, assuming code is source of truth for "Employees"
-                // Password is kept from existingUser if set, else initUser
-                role: initUser.role,
-                name: initUser.name,
-                email: initUser.email
+                ...existingUser,
+                projects: combinedProjects, // Ensure code-defined projects are present
+                role: initUser.role, // Force role update from code
+                name: initUser.name
             });
         } else {
-            // New user in code (e.g. Armin), add them
             mergedUsersMap.set(initUser.id, initUser);
         }
     });
-    
     this.users = Array.from(mergedUsersMap.values());
 
     // 3. SMART MERGE STRATEGY (Projects)
     const mergedProjectsMap = new Map<string, Project>();
     localProjects.forEach(p => mergedProjectsMap.set(p.id, p));
-
     INITIAL_PROJECTS.forEach(initProj => {
         const existingProj = mergedProjectsMap.get(initProj.id);
         if (existingProj) {
-            // Project exists. Ensure fields like description/technologies are updated from code
-            // but keep status/progress/logs from local storage (user activity)
             mergedProjectsMap.set(initProj.id, {
                 ...existingProj,
-                // Optional: Update static fields if you want code to override descriptions
-                description: initProj.description,
-                technologies: initProj.technologies,
-                // CRITICAL: Ensure startDate/deadline structure is valid
-                startDate: existingProj.startDate || initProj.startDate,
-                deadline: existingProj.deadline || initProj.deadline
+                // Force critical fields from code
+                client: initProj.client,
+                name: initProj.name,
+                teamIds: Array.from(new Set([...initProj.teamIds, ...existingProj.teamIds]))
             });
         } else {
             mergedProjectsMap.set(initProj.id, initProj);
         }
     });
-
     this.projects = Array.from(mergedProjectsMap.values());
 
-    // 4. SMART MERGE STRATEGY (Gems)
-    // Simple overwrite for gems usually, or append. Let's distinct by ID.
+    // 4. Gems
     const mergedGemsMap = new Map<string, Gem>();
     localGems.forEach(g => mergedGemsMap.set(g.id, g));
-    INITIAL_GEMS.forEach(g => mergedGemsMap.set(g.id, g)); // Code overwrites local for Gems to keep URLs updated
+    INITIAL_GEMS.forEach(g => mergedGemsMap.set(g.id, g));
     this.gems = Array.from(mergedGemsMap.values());
 
-    // 5. SAVE BACK TO ENSURE PERSISTENCE
-    this.saveUsers();
-    this.saveProjects();
-    this.saveGems();
+    this.saveAll();
   }
 
-  private saveUsers() {
+  private saveAll() {
     localStorage.setItem(USERS_KEY, JSON.stringify(this.users));
-  }
-
-  private saveProjects() {
     localStorage.setItem(PROJECTS_KEY, JSON.stringify(this.projects));
+    localStorage.setItem(GEMS_KEY, JSON.stringify(this.gems));
   }
 
-  private saveGems() {
-    localStorage.setItem(GEMS_KEY, JSON.stringify(this.gems));
+  // --- FORCE RESET ---
+  async resetToDefaults(): Promise<void> {
+      await delay(500);
+      // Hard reset to constants
+      this.users = [...INITIAL_USERS];
+      this.projects = [...INITIAL_PROJECTS];
+      this.gems = [...INITIAL_GEMS];
+      this.saveAll();
   }
 
   // --- User Operations ---
@@ -121,7 +105,7 @@ class DBService {
   async addUser(user: User): Promise<void> {
     await delay(500);
     this.users.push(user);
-    this.saveUsers();
+    this.saveAll();
   }
 
   async updateUser(user: User): Promise<void> {
@@ -129,14 +113,14 @@ class DBService {
     const index = this.users.findIndex(u => u.id === user.id);
     if (index !== -1) {
       this.users[index] = user;
-      this.saveUsers();
+      this.saveAll();
     }
   }
 
   async deleteUser(userId: string): Promise<void> {
     await delay(400);
     this.users = this.users.filter(u => u.id !== userId);
-    this.saveUsers();
+    this.saveAll();
   }
 
   // --- Project Operations ---
@@ -148,7 +132,7 @@ class DBService {
   async addProject(project: Project): Promise<void> {
     await delay(500);
     this.projects.push(project);
-    this.saveProjects();
+    this.saveAll();
   }
 
   async updateProject(project: Project): Promise<void> {
@@ -156,14 +140,14 @@ class DBService {
     const index = this.projects.findIndex(p => p.id === project.id);
     if (index !== -1) {
       this.projects[index] = project;
-      this.saveProjects();
+      this.saveAll();
     }
   }
 
   async deleteProject(projectId: string): Promise<void> {
     await delay(400);
     this.projects = this.projects.filter(p => p.id !== projectId);
-    this.saveProjects();
+    this.saveAll();
   }
 
   async addProjectLog(projectId: string, log: ProjectLog): Promise<void> {
@@ -172,7 +156,7 @@ class DBService {
     if (project) {
         if (!project.logs) project.logs = [];
         project.logs.push(log);
-        this.saveProjects();
+        this.saveAll();
     }
   }
 
@@ -185,7 +169,7 @@ class DBService {
   async addGem(gem: Gem): Promise<void> {
     await delay(300);
     this.gems.push(gem);
-    this.saveGems();
+    this.saveAll();
   }
 }
 

@@ -11,18 +11,20 @@ export const AdminUsersView = ({
   onUpdateUser, 
   onDeleteUser, 
   onAddUser,
-  onUpdateProject // Added prop to handle project status changes
+  onUpdateProject,
+  onResetDB // New prop
 }: { 
   users: User[], 
   projects: Project[],
   onUpdateUser: (u: User) => void, 
   onDeleteUser: (id: string) => void,
   onAddUser: (u: User) => void,
-  onUpdateProject: (p: Project) => void
+  onUpdateProject: (p: Project) => void,
+  onResetDB: () => void
 }) => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null); // Track which user's project menu is open
+  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null);
   
   // State for the form
   const [formData, setFormData] = useState<Partial<User>>({});
@@ -70,7 +72,6 @@ export const AdminUsersView = ({
     setIsAdding(false);
   };
 
-  // Toggle Project Status Logic
   const toggleProjectStatus = (projectId: string) => {
       const project = projects.find(p => p.id === projectId);
       if (project) {
@@ -83,6 +84,12 @@ export const AdminUsersView = ({
       }
   };
 
+  const handleResetClick = () => {
+      if(confirm("ADVERTENCIA: Esto reiniciará la base de datos a los valores predeterminados del sistema (Código). Se borrarán los usuarios creados manualmente. ¿Continuar para reparar inconsistencias?")) {
+          onResetDB();
+      }
+  }
+
   return (
     <div className="space-y-6 pb-24 md:pb-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-red-900/5 border border-red-900/10 p-6 rounded-xl gap-4">
@@ -92,9 +99,14 @@ export const AdminUsersView = ({
             </h2>
             <p className="text-red-700/60 text-sm mt-1">Gestión total de colaboradores y seguridad.</p>
         </div>
-        <button onClick={handleCreate} className="w-full md:w-auto bg-red-700 hover:bg-red-800 text-white px-4 py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2">
-            <Icon name="fa-user-plus" /> Agregar Usuario
-        </button>
+        <div className="flex gap-2 w-full md:w-auto">
+             <button onClick={handleResetClick} className="flex-1 md:flex-none bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2">
+                <Icon name="fa-database" /> Restaurar DB
+            </button>
+            <button onClick={handleCreate} className="flex-1 md:flex-none bg-red-700 hover:bg-red-800 text-white px-4 py-3 rounded-lg font-bold shadow-lg flex items-center justify-center gap-2">
+                <Icon name="fa-user-plus" /> Agregar Usuario
+            </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
@@ -129,7 +141,6 @@ export const AdminUsersView = ({
                       </span>
                   </td>
                   <td className="p-4 relative">
-                      {/* Project Dropdown / Combobox */}
                       <div className="relative">
                           <button 
                             onClick={() => setOpenProjectMenuId(openProjectMenuId === user.id ? null : user.id)}
@@ -148,17 +159,14 @@ export const AdminUsersView = ({
                                       {user.projects.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">Sin asignaciones</div>}
                                       {user.projects.map(pid => {
                                           const proj = projects.find(p => p.id === pid);
-                                          
-                                          // Handle case where project is in user list but not in projects database
                                           if (!proj) {
                                               return (
                                                   <div key={pid} className="w-full text-left p-3 text-xs border-b border-slate-50 bg-red-50 text-red-500 flex items-center gap-2">
                                                       <Icon name="fa-exclamation-triangle" />
-                                                      <span>Proyecto ID: {pid} (No encontrado)</span>
+                                                      <span>ID: {pid} (No encontrado)</span>
                                                   </div>
                                               );
                                           }
-                                          
                                           const isActive = proj.status === 'En Curso';
                                           return (
                                               <button 
@@ -166,12 +174,12 @@ export const AdminUsersView = ({
                                                 onClick={() => toggleProjectStatus(pid)}
                                                 className="w-full text-left p-3 text-xs border-b border-slate-50 hover:bg-slate-50 flex items-center justify-between group"
                                               >
-                                                  <div className="truncate pr-2">
-                                                      <div className="font-bold text-slate-700">{proj.name}</div>
-                                                      <div className="text-[10px] text-slate-400">{proj.client}</div>
+                                                  <div className="truncate pr-2 max-w-[140px]">
+                                                      <div className="font-bold text-slate-700 truncate">{proj.name}</div>
+                                                      <div className="text-[10px] text-slate-400 truncate">{proj.client}</div>
                                                   </div>
                                                   <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-400'}`}>
-                                                      {isActive ? 'ACTIVO' : 'OFF'}
+                                                      {isActive ? 'ON' : 'OFF'}
                                                   </div>
                                               </button>
                                           );

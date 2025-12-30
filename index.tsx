@@ -113,6 +113,13 @@ const App = () => {
   const handleDeleteUser = async (id: string) => { if(confirm('¿Eliminar colaborador? Esta acción no se puede deshacer.')) { await db.deleteUser(id); loadData(); }};
   
   const handleAddGem = async (g: Gem) => { await db.addGem(g); loadData(); };
+
+  const handleResetDB = async () => {
+      setLoading(true);
+      await db.resetToDefaults();
+      await loadData();
+      alert("Base de datos restaurada correctamente. Los datos de código (constants) ahora son los vigentes.");
+  };
   
   // Mobile Nav Logic for Tools
   const handleNavigate = (r: AppRoute) => {
@@ -164,6 +171,7 @@ const App = () => {
                   onUpdateUser={handleUpdateUser} 
                   onDeleteUser={handleDeleteUser} 
                   onUpdateProject={handleUpdateProject}
+                  onResetDB={handleResetDB}
               />
           )}
         </div>
