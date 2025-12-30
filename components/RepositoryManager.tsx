@@ -49,13 +49,20 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [creationStatus, setCreationStatus] = useState<'idle' | 'auth' | 'creating' | 'success' | 'error'>('idle');
   const [creationLog, setCreationLog] = useState('');
 
-  // --- NEW: FOLDER PICKER STATE ---
+  // --- STRUCT CREATION PICKER STATE ---
   const [targetParent, setTargetParent] = useState<{id: string, name: string}>({ id: 'root', name: 'Mi Unidad (Raíz)' });
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pickerItems, setPickerItems] = useState<any[]>([]);
   const [pickerCurrentFolder, setPickerCurrentFolder] = useState<{id: string, name: string}>({ id: 'root', name: 'Mi Unidad' });
   const [pickerBreadcrumb, setPickerBreadcrumb] = useState<{id: string, name: string}[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
+
+  // --- UPLOAD BROWSER STATE (NEW) ---
+  const [isUploadBrowserOpen, setIsUploadBrowserOpen] = useState(false);
+  const [uploadBrowserItems, setUploadBrowserItems] = useState<any[]>([]);
+  const [uploadCurrentFolder, setUploadCurrentFolder] = useState<{id: string, name: string}>({ id: '', name: '' });
+  const [uploadBreadcrumb, setUploadBreadcrumb] = useState<{id: string, name: string}[]>([]);
+  const [uploadBrowserLoading, setUploadBrowserLoading] = useState(false);
 
   // Upload State
   const [uploadState, setUploadState] = useState<'idle' | 'selecting' | 'uploading' | 'success' | 'error'>('idle');
@@ -75,31 +82,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       }
   }, [githubToken, isEnvConfigured]);
 
-  // --- ACTIONS ---
+  // --- HELPERS ---
 
-  const handleAddRepo = () => {
-      if (!newRepo.alias || !newRepo.url) return;
-      const updatedRepositories = [
-          ...(project.repositories || []),
-          { 
-              id: `r_${Date.now()}`, 
-              type: activeTab, 
-              alias: newRepo.alias, 
-              url: newRepo.url 
-          } as Repository
-      ];
-      onUpdateProject({ ...project, repositories: updatedRepositories });
-      setNewRepo({ alias: '', url: '' });
-      setViewMode('list');
+  const getFolderIdFromUrl = (url: string): string | null => {
+      const match = url.match(/(?:folders\/|id=)([\w-]+)/);
+      return match ? match[1] : null;
   };
 
-  const handleDeleteRepo = (repoId: string) => {
-      if (!confirm("¿Eliminar este enlace del proyecto?")) return;
-      const updatedRepositories = project.repositories.filter(r => r.id !== repoId);
-      onUpdateProject({ ...project, repositories: updatedRepositories });
-  };
-
-  // --- DRIVE AUTH HELPER ---
   const authenticateDrive = (): Promise<string> => {
       return new Promise((resolve, reject) => {
           if (driveToken) {
@@ -130,7 +119,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       });
   };
 
-  // --- DRIVE FOLDER PICKER LOGIC ---
   const fetchDriveFolders = async (parentId: string, token: string) => {
       const query = `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
       const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=100&orderBy=name`, {
@@ -140,6 +128,32 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       const data = await response.json();
       return data.files || [];
   };
+
+  // --- ACTIONS ---
+
+  const handleAddRepo = () => {
+      if (!newRepo.alias || !newRepo.url) return;
+      const updatedRepositories = [
+          ...(project.repositories || []),
+          { 
+              id: `r_${Date.now()}`, 
+              type: activeTab, 
+              alias: newRepo.alias, 
+              url: newRepo.url 
+          } as Repository
+      ];
+      onUpdateProject({ ...project, repositories: updatedRepositories });
+      setNewRepo({ alias: '', url: '' });
+      setViewMode('list');
+  };
+
+  const handleDeleteRepo = (repoId: string) => {
+      if (!confirm("¿Eliminar este enlace del proyecto?")) return;
+      const updatedRepositories = project.repositories.filter(r => r.id !== repoId);
+      onUpdateProject({ ...project, repositories: updatedRepositories });
+  };
+
+  // --- STRUCTURE PICKER LOGIC ---
 
   const openPicker = async () => {
       setIsPickerOpen(true);
@@ -152,14 +166,14 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setPickerBreadcrumb([{ id: 'root', name: 'Mi Unidad' }]);
       } catch (e) {
           console.error(e);
-          alert("Error abriendo selector: " + e);
+          alert("Error: " + e);
           setIsPickerOpen(false);
       } finally {
           setPickerLoading(false);
       }
   };
 
-  const handleEnterFolder = async (folder: {id: string, name: string}) => {
+  const handlePickerEnter = async (folder: {id: string, name: string}) => {
       setPickerLoading(true);
       try {
           const token = await authenticateDrive();
@@ -167,14 +181,10 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setPickerItems(items);
           setPickerCurrentFolder(folder);
           setPickerBreadcrumb([...pickerBreadcrumb, folder]);
-      } catch (e) {
-          console.error(e);
-      } finally {
-          setPickerLoading(false);
-      }
+      } catch (e) { console.error(e); } finally { setPickerLoading(false); }
   };
 
-  const handleNavigateUp = async (index: number) => {
+  const handlePickerUp = async (index: number) => {
       const target = pickerBreadcrumb[index];
       const newBreadcrumb = pickerBreadcrumb.slice(0, index + 1);
       setPickerLoading(true);
@@ -184,11 +194,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setPickerItems(items);
           setPickerCurrentFolder(target);
           setPickerBreadcrumb(newBreadcrumb);
-      } catch (e) {
-          console.error(e);
-      } finally {
-          setPickerLoading(false);
-      }
+      } catch (e) { console.error(e); } finally { setPickerLoading(false); }
   };
 
   const confirmSelection = () => {
@@ -196,24 +202,72 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       setIsPickerOpen(false);
   };
 
+  // --- UPLOAD BROWSER LOGIC ---
 
-  // --- DRIVE FOLDER CREATION LOGIC ---
-  const createDriveFolder = async (name: string, parentId: string | null, token: string) => {
-      const metadata: any = {
-          name: name,
-          mimeType: 'application/vnd.google-apps.folder'
-      };
-      // Use selected parent or 'root' if null
-      if (parentId && parentId !== 'root') {
-          metadata.parents = [parentId];
+  const openUploadBrowser = async (repo: Repository) => {
+      const rootId = getFolderIdFromUrl(repo.url);
+      if (!rootId) {
+          alert("URL inválida, no se detectó ID de carpeta.");
+          return;
       }
+      setSelectedRepoId(repo.id);
+      setIsUploadBrowserOpen(true);
+      setUploadBrowserLoading(true);
+      
+      try {
+          const token = await authenticateDrive();
+          // Initialize Browser at Root of Repo
+          const items = await fetchDriveFolders(rootId, token);
+          setUploadBrowserItems(items);
+          setUploadCurrentFolder({ id: rootId, name: repo.alias });
+          setUploadBreadcrumb([{ id: rootId, name: repo.alias }]);
+      } catch (e: any) {
+          alert("Error abriendo repositorio: " + e.message);
+          setIsUploadBrowserOpen(false);
+      } finally {
+          setUploadBrowserLoading(false);
+      }
+  };
+
+  const handleUploadNavigate = async (folder: {id: string, name: string}) => {
+      setUploadBrowserLoading(true);
+      try {
+          const token = await authenticateDrive();
+          const items = await fetchDriveFolders(folder.id, token);
+          setUploadBrowserItems(items);
+          setUploadCurrentFolder(folder);
+          setUploadBreadcrumb([...uploadBreadcrumb, folder]);
+      } catch (e) { console.error(e); } finally { setUploadBrowserLoading(false); }
+  };
+
+  const handleUploadNavigateUp = async (index: number) => {
+      const target = uploadBreadcrumb[index];
+      const newBreadcrumb = uploadBreadcrumb.slice(0, index + 1);
+      setUploadBrowserLoading(true);
+      try {
+          const token = await authenticateDrive();
+          const items = await fetchDriveFolders(target.id, token);
+          setUploadBrowserItems(items);
+          setUploadCurrentFolder(target);
+          setUploadBreadcrumb(newBreadcrumb);
+      } catch (e) { console.error(e); } finally { setUploadBrowserLoading(false); }
+  };
+
+  const triggerFileUploadHere = () => {
+      // The current folder ID is stored in uploadCurrentFolder.id
+      // We trigger the hidden input, and when it changes, we use that ID.
+      if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+
+  // --- STRUCTURE CREATION LOGIC ---
+  const createDriveFolder = async (name: string, parentId: string | null, token: string) => {
+      const metadata: any = { name: name, mimeType: 'application/vnd.google-apps.folder' };
+      if (parentId && parentId !== 'root') metadata.parents = [parentId];
 
       const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', {
           method: 'POST',
-          headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-          },
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(metadata)
       });
 
@@ -221,29 +275,23 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           const err = await response.json();
           throw new Error(err.error?.message || "Error creando carpeta");
       }
-      return await response.json(); // returns { id, webViewLink }
+      return await response.json();
   };
 
   const handleCreateStructure = async () => {
       setCreationStatus('auth');
       setCreationLog('Autenticando...');
-      
       try {
           const token = await authenticateDrive();
-          
           setCreationStatus('creating');
           
-          // 1. Construct Root Name: [CORRELATIVO]_[NOMBRE]_[ENCARGADO]
           const safeName = project.name.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
           const safeManager = (project.encargadoCliente || 'SinAsignar').replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
           const rootFolderName = `${correlative}_${safeName}_${safeManager}`;
 
           setCreationLog(`Creando carpeta raíz: ${rootFolderName}...`);
-          
-          // 2. Create Root in the selected Target Parent
           const rootFolder = await createDriveFolder(rootFolderName, targetParent.id, token);
           
-          // 3. Create Subfolders
           let createdCount = 0;
           for (const subName of FOLDER_STRUCTURE) {
               setCreationLog(`Creando subcarpeta (${createdCount + 1}/${FOLDER_STRUCTURE.length}): ${subName}...`);
@@ -254,7 +302,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setCreationLog('¡Estructura creada exitosamente!');
           setCreationStatus('success');
 
-          // 4. Link to Project
           const newRepoLink: Repository = {
               id: `r_${Date.now()}`,
               type: 'drive',
@@ -263,9 +310,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           };
 
           const updatedRepositories = [...(project.repositories || []), newRepoLink];
-          onUpdateProject({ ...project, repositories: updatedRepositories });
-
-          // 5. Add Log
           const newLog: ProjectLog = {
             id: `log_${Date.now()}`,
             date: new Date().toISOString(),
@@ -287,14 +331,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       }
   };
 
-  // --- UPLOAD LOGIC ---
+  // --- MAIN UPLOAD TRIGGER ---
   const handleTriggerUpload = async (repoId: string) => {
-      setSelectedRepoId(repoId);
+      const repo = project.repositories?.find(r => r.id === repoId);
+      if (!repo) return;
 
       // 1. GITHUB FLOW
       if (activeTab === 'github') {
+          setSelectedRepoId(repoId);
           if (!githubToken) {
-              alert("⚠️ Para subir archivos directo a GitHub, necesitas configurar tu Token de Acceso (PAT) primero.");
+              alert("⚠️ Para subir a GitHub, configura tu Token (PAT) primero.");
               setShowTokenInput(true);
               return;
           }
@@ -302,17 +348,10 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           return;
       }
 
-      // 2. GOOGLE DRIVE FLOW
+      // 2. GOOGLE DRIVE FLOW (With Browser)
       if (activeTab === 'drive') {
-          try {
-              const token = await authenticateDrive();
-              // Try auto-open, fallback to user click if blocked
-               setTimeout(() => {
-                  if (fileInputRef.current) fileInputRef.current.click();
-              }, 100);
-          } catch (e: any) {
-              alert("Error Auth Drive: " + e);
-          }
+           // Instead of direct upload, open the Browser
+           openUploadBrowser(repo);
       }
   };
 
@@ -320,38 +359,43 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
           setSelectedFile(file);
+          
+          // Determine Repository
           const repo = project.repositories?.find(r => r.id === selectedRepoId);
           if (!repo) return;
+
           setUploadState('uploading');
+
           if (activeTab === 'github') {
              await uploadToGitHubReal(file, repo);
           } else {
-             await uploadToDriveReal(file, repo, driveToken);
+             // For Drive, we use the ID from the Browser State (uploadCurrentFolder)
+             // If for some reason browser is closed but we are here, fallback to repo root
+             const targetId = isUploadBrowserOpen ? uploadCurrentFolder.id : getFolderIdFromUrl(repo.url);
+             if (targetId) {
+                await uploadToDriveReal(file, repo, driveToken, targetId);
+             } else {
+                 setUploadState('error');
+                 setUploadStatusMsg("ID de carpeta destino perdido.");
+             }
           }
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // --- REAL GOOGLE DRIVE API UPLOAD ---
-  const uploadToDriveReal = async (file: File, repo: Repository, accessToken: string) => {
+  const uploadToDriveReal = async (file: File, repo: Repository, accessToken: string, folderId: string) => {
       setUploadStatusMsg('Iniciando carga segura...');
       setProgress(5);
+      
       if (!accessToken) {
           setUploadState('error');
-          setUploadStatusMsg('Sesión expirada. Por favor intente nuevamente.');
+          setUploadStatusMsg('Sesión expirada.');
           return;
       }
-      let folderId = '';
-      const folderMatch = repo.url.match(/(?:folders\/|id=)([\w-]+)/);
-      if (folderMatch) {
-          folderId = folderMatch[1];
-      } else {
-          setUploadState('error');
-          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL.');
-          return;
-      }
+
       try {
-          setUploadStatusMsg('Enviando datos a Google Drive...');
+          setUploadStatusMsg(`Subiendo a carpeta: ...${folderId.slice(-5)}`);
           setProgress(30);
           const metadata = { name: file.name, parents: [folderId] };
           const form = new FormData();
@@ -370,7 +414,11 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           }
           const data = await response.json();
           setProgress(100);
-          completeUpload(file, repo, data.webViewLink);
+          
+          // Close browser if open
+          setIsUploadBrowserOpen(false);
+          
+          completeUpload(file, repo, data.webViewLink, isUploadBrowserOpen ? uploadCurrentFolder.name : undefined);
       } catch (e: any) {
           console.error(e);
           setUploadState('error');
@@ -432,12 +480,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       }
   };
 
-  const completeUpload = (file: File, repo: Repository, finalUrl?: string) => {
+  const completeUpload = (file: File, repo: Repository, finalUrl?: string, folderName?: string) => {
+      const extraInfo = folderName ? ` en carpeta "${folderName}"` : '';
       const newLog: ProjectLog = {
           id: `log_${Date.now()}`,
           date: new Date().toISOString(),
           author: currentUser.name,
-          text: `✅ ARCHIVO CARGADO: "${file.name}" a ${repo.alias} (${repo.type === 'github' ? 'GitHub API' : 'Google Drive'})`,
+          text: `✅ ARCHIVO CARGADO: "${file.name}" a ${repo.alias}${extraInfo}`,
           link: finalUrl || repo.url
       };
       onUpdateProject({ ...project, logs: [...(project.logs || []), newLog] });
@@ -493,25 +542,21 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 relative">
                 
-                {/* PICKER OVERLAY - RESPONSIVE FIX */}
+                {/* --- STRUCTURE PICKER OVERLAY (CREATE MODE) --- */}
                 {isPickerOpen && (
                     <div className="absolute inset-0 bg-white z-50 flex flex-col p-4 animate-fade-in">
                         <div className="flex justify-between items-center mb-4 border-b pb-2 shrink-0">
                              <div>
-                                 <h3 className="font-bold text-slate-800">Seleccionar Carpeta</h3>
-                                 <p className="text-xs text-slate-500">Navega y selecciona destino.</p>
+                                 <h3 className="font-bold text-slate-800">Ubicación del Proyecto</h3>
+                                 <p className="text-xs text-slate-500">¿Dónde crear la carpeta raíz?</p>
                              </div>
                              <button onClick={() => setIsPickerOpen(false)} className="text-slate-400 hover:text-slate-600"><Icon name="fa-times" /></button>
                         </div>
                         
-                        {/* Breadcrumbs */}
                         <div className="flex gap-1 text-xs mb-3 overflow-x-auto whitespace-nowrap pb-2 shrink-0">
                             {pickerBreadcrumb.map((crumb, idx) => (
                                 <div key={crumb.id} className="flex items-center">
-                                    <button 
-                                        onClick={() => handleNavigateUp(idx)}
-                                        className={`hover:underline ${idx === pickerBreadcrumb.length - 1 ? 'font-bold text-slate-800' : 'text-blue-600'}`}
-                                    >
+                                    <button onClick={() => handlePickerUp(idx)} className={`hover:underline ${idx === pickerBreadcrumb.length - 1 ? 'font-bold text-slate-800' : 'text-blue-600'}`}>
                                         {crumb.name}
                                     </button>
                                     {idx < pickerBreadcrumb.length - 1 && <Icon name="fa-chevron-right" className="mx-1 text-slate-300 text-[8px]" />}
@@ -519,46 +564,109 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                             ))}
                         </div>
 
-                        {/* List - Flex 1 to take available space */}
                         <div className="flex-1 overflow-y-auto bg-slate-50 rounded-lg border border-slate-200 p-2 space-y-1">
                              {pickerLoading ? (
-                                 <div className="flex items-center justify-center h-full text-slate-400 gap-2">
-                                     <Icon name="fa-circle-notch" className="animate-spin" /> Cargando Drive...
-                                 </div>
+                                 <div className="flex items-center justify-center h-full text-slate-400 gap-2"><Icon name="fa-circle-notch" className="animate-spin" /> Cargando...</div>
                              ) : pickerItems.length === 0 ? (
                                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">Carpeta vacía</div>
                              ) : (
                                  pickerItems.map(item => (
-                                     <div key={item.id} className="flex items-center justify-between p-3 hover:bg-white hover:shadow-sm rounded cursor-pointer group border-b border-transparent hover:border-slate-100" onClick={() => handleEnterFolder(item)}>
+                                     <div key={item.id} className="flex items-center justify-between p-3 hover:bg-white hover:shadow-sm rounded cursor-pointer group border-b border-transparent hover:border-slate-100" onClick={() => handlePickerEnter(item)}>
                                           <div className="flex items-center gap-3">
                                               <Icon name="fa-folder" className="text-yellow-400 text-lg" />
                                               <span className="text-sm text-slate-700 font-medium truncate max-w-[180px]">{item.name}</span>
                                           </div>
-                                          <Icon name="fa-chevron-right" className="text-slate-300 text-xs group-hover:text-slate-500" />
+                                          <Icon name="fa-chevron-right" className="text-slate-300 text-xs" />
                                      </div>
                                  ))
                              )}
                         </div>
 
-                        {/* Actions - Fixed at bottom via shrink-0 in parent flex */}
                         <div className="mt-4 shrink-0 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
                             <div className="text-xs text-blue-800 truncate mr-2">
-                                Selección:<br/>
-                                <strong className="text-sm">{pickerCurrentFolder.name}</strong>
+                                Selección:<br/><strong className="text-sm">{pickerCurrentFolder.name}</strong>
                             </div>
-                            <button 
-                                onClick={confirmSelection}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all shrink-0"
-                            >
+                            <button onClick={confirmSelection} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all shrink-0">
                                 <Icon name="fa-check" /> Seleccionar
                             </button>
                         </div>
                     </div>
                 )}
 
-                {/* UPLOAD OVERLAY: PROGRESS */}
+                {/* --- UPLOAD BROWSER OVERLAY (FILE UPLOAD MODE) --- */}
+                {isUploadBrowserOpen && (
+                    <div className="absolute inset-0 bg-white z-50 flex flex-col p-4 animate-fade-in">
+                        <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-4 shrink-0">
+                             <div className="flex items-center gap-3">
+                                 <div className="w-10 h-10 bg-green-100 text-green-600 rounded-lg flex items-center justify-center text-xl"><Icon name="fab fa-google-drive" /></div>
+                                 <div>
+                                    <h3 className="font-bold text-slate-800 text-lg leading-tight">Explorador Drive</h3>
+                                    <p className="text-xs text-slate-500">Navega y sube tu archivo.</p>
+                                 </div>
+                             </div>
+                             <button onClick={() => setIsUploadBrowserOpen(false)} className="text-slate-400 hover:text-slate-600 w-8 h-8 bg-slate-100 hover:bg-slate-200 rounded-full flex items-center justify-center transition-colors"><Icon name="fa-times" /></button>
+                        </div>
+                        
+                        <div className="flex gap-2 text-xs mb-4 overflow-x-auto whitespace-nowrap pb-2 shrink-0 border-b border-slate-100 px-1">
+                            {uploadBreadcrumb.map((crumb, idx) => (
+                                <div key={crumb.id} className="flex items-center">
+                                    <button onClick={() => handleUploadNavigateUp(idx)} className={`px-2 py-1 rounded hover:bg-slate-100 ${idx === uploadBreadcrumb.length - 1 ? 'font-bold text-slate-800 bg-slate-50' : 'text-blue-600'}`}>
+                                        {crumb.name}
+                                    </button>
+                                    {idx < uploadBreadcrumb.length - 1 && <Icon name="fa-chevron-right" className="mx-1 text-slate-300 text-[8px]" />}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* LISTA MEJORADA VISUALMENTE */}
+                        <div className="flex-1 overflow-y-auto bg-slate-50/50 rounded-xl border border-slate-200 p-3 space-y-2 shadow-inner">
+                             {uploadBrowserLoading ? (
+                                 <div className="flex items-center justify-center h-full text-slate-400 gap-2"><Icon name="fa-circle-notch" className="animate-spin text-2xl" /> <span className="text-sm font-medium">Cargando...</span></div>
+                             ) : uploadBrowserItems.length === 0 ? (
+                                 <div className="flex items-center justify-center h-full text-slate-400 text-sm flex-col gap-3">
+                                     <Icon name="fa-folder-open" className="text-4xl opacity-30"/>
+                                     <span className="font-medium">Esta carpeta está vacía</span>
+                                 </div>
+                             ) : (
+                                 uploadBrowserItems.map(item => (
+                                     <div 
+                                        key={item.id} 
+                                        className="flex items-center justify-between p-4 bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl cursor-pointer shadow-sm transition-all active:scale-[0.98] group" 
+                                        onClick={() => handleUploadNavigate(item)}
+                                     >
+                                          <div className="flex items-center gap-4 overflow-hidden">
+                                              <div className="w-10 h-10 rounded-full bg-yellow-50 flex items-center justify-center border border-yellow-100 shrink-0">
+                                                  <Icon name="fa-folder" className="text-yellow-500 text-xl" />
+                                              </div>
+                                              <span className="text-sm md:text-base text-slate-700 font-bold truncate">{item.name}</span>
+                                          </div>
+                                          <div className="w-8 h-8 rounded-full bg-slate-50 group-hover:bg-white flex items-center justify-center text-slate-300 group-hover:text-blue-500 shrink-0 transition-colors">
+                                              <Icon name="fa-chevron-right" className="text-xs" />
+                                          </div>
+                                     </div>
+                                 ))
+                             )}
+                        </div>
+
+                        <div className="mt-4 shrink-0 bg-white border-t border-slate-100 pt-4">
+                             <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex flex-col gap-3">
+                                 <div className="flex items-center gap-2 text-xs text-green-800">
+                                     <Icon name="fa-info-circle" /> Estás en: <strong>{uploadCurrentFolder.name}</strong>
+                                 </div>
+                                 <button 
+                                    onClick={triggerFileUploadHere}
+                                    className="w-full bg-green-600 text-white py-3.5 rounded-xl font-bold text-sm shadow-md hover:bg-green-700 transition-transform active:scale-95 flex items-center justify-center gap-2"
+                                 >
+                                    <Icon name="fa-cloud-upload-alt" className="text-lg" /> SUBIR ARCHIVO AQUÍ
+                                 </button>
+                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* UPLOAD PROGRESS OVERLAY */}
                 {uploadState === 'uploading' && (
-                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+                    <div className="absolute inset-0 bg-white z-[60] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
                         <div className="w-20 h-20 mb-6 relative mx-auto">
                             <Icon name="fa-circle-notch" className={`text-6xl text-${themeColor}-200 animate-spin absolute inset-0`} />
                             <Icon name="fa-cloud-upload-alt" className={`text-2xl text-${themeColor}-600 absolute inset-0 m-auto`} />
@@ -573,7 +681,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
                 {/* ERROR OVERLAY */}
                 {(uploadState === 'error' || creationStatus === 'error') && (
-                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+                    <div className="absolute inset-0 bg-white z-[60] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
                         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600 text-4xl mx-auto">
                             <Icon name="fa-exclamation-triangle" />
                         </div>
@@ -585,7 +693,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
                 {/* SUCCESS OVERLAY */}
                 {uploadState === 'success' && (
-                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-scale-up">
+                    <div className="absolute inset-0 bg-white z-[60] flex flex-col items-center justify-center p-8 animate-scale-up">
                         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600 text-4xl">
                             <Icon name="fa-check" />
                         </div>
@@ -657,7 +765,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                             {activeTab === 'drive' && !driveToken ? (
                                                 <><Icon name="fab fa-google" /> Conectar</>
                                             ) : (
-                                                <><Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir' : 'Elegir'}</>
+                                                <><Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir' : 'Conectar & Subir'}</>
                                             )}
                                         </button>
                                     </div>
@@ -668,7 +776,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 )}
 
                 {/* VIEW MODE: ADD */}
-                {viewMode === 'add' && !isPickerOpen && (
+                {viewMode === 'add' && !isPickerOpen && !isUploadBrowserOpen && (
                     <div className="space-y-6 animate-slide-up">
                         <div className="flex justify-between items-center">
                             <h3 className="font-bold text-lg text-slate-800">Nuevo Enlace</h3>
