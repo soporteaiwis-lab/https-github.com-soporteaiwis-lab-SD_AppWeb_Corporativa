@@ -16,27 +16,40 @@ export interface User {
   projects: string[]; // Project IDs
 }
 
+export interface ProjectLog {
+  id: string;
+  date: string; // ISO string
+  text: string;
+  author: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   client: string;
-  leadId: string;
+  encargadoCliente?: string; // Client Contact
+  leadId: string; // Internal JP
   teamIds: string[];
-  status: 'In Progress' | 'Completed' | 'On Hold' | 'Planning';
-  deadline: string;
+  status: 'En Curso' | 'Finalizado' | 'Planning';
+  isOngoing: boolean;
+  report: boolean; // For weekly report inclusion
+  deadline: string; // Used as End Date
+  startDate?: string;
   progress: number; // 0-100
   description: string;
   technologies: string[];
+  year: number;
+  logs: ProjectLog[];
+  driveLink?: string;
+  githubLink?: string;
 }
 
-export interface WeeklyReport {
+export interface Gem {
   id: string;
-  userId: string;
-  weekStarting: string;
-  content: string;
-  projectsWorkedOn: string[];
-  blockers: string;
-  status: 'Draft' | 'Submitted';
+  name: string;
+  description: string;
+  url: string;
+  icon: string;
 }
 
 export interface ChatMessage {
@@ -49,6 +62,7 @@ export interface ChatMessage {
 export enum AppRoute {
   DASHBOARD = 'dashboard',
   PROJECTS = 'projects',
+  GEMS = 'gems',
   TEAM = 'team',
   REPORTS = 'reports',
   TOOLS = 'tools'

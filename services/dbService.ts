@@ -1,22 +1,10 @@
-import { User, Project } from '../types';
-import { INITIAL_USERS, INITIAL_PROJECTS } from '../constants';
+import { User, Project, Gem, ProjectLog } from '../types';
+import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS } from '../constants';
 
-/**
- * DB SERVICE (Simulating Firebase Firestore)
- * 
- * In a real implementation, you would initialize Firebase here:
- * 
- * import { initializeApp } from "firebase/app";
- * import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
- * 
- * const firebaseConfig = { ... };
- * const app = initializeApp(firebaseConfig);
- * const db = getFirestore(app);
- */
-
-// Local Storage Keys to persist data during simulation
-const USERS_KEY = 'simpledata_users_v1';
-const PROJECTS_KEY = 'simpledata_projects_v1';
+// Local Storage Keys
+const USERS_KEY = 'simpledata_users_v2';
+const PROJECTS_KEY = 'simpledata_projects_v2';
+const GEMS_KEY = 'simpledata_gems_v1';
 
 // Helper to simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -24,6 +12,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 class DBService {
   private users: User[] = [];
   private projects: Project[] = [];
+  private gems: Gem[] = [];
 
   constructor() {
     this.loadInitialData();
@@ -32,6 +21,7 @@ class DBService {
   private loadInitialData() {
     const savedUsers = localStorage.getItem(USERS_KEY);
     const savedProjects = localStorage.getItem(PROJECTS_KEY);
+    const savedGems = localStorage.getItem(GEMS_KEY);
 
     if (savedUsers) {
       this.users = JSON.parse(savedUsers);
@@ -46,6 +36,13 @@ class DBService {
       this.projects = [...INITIAL_PROJECTS];
       this.saveProjects();
     }
+
+    if (savedGems) {
+      this.gems = JSON.parse(savedGems);
+    } else {
+      this.gems = [...INITIAL_GEMS];
+      this.saveGems();
+    }
   }
 
   private saveUsers() {
@@ -56,10 +53,13 @@ class DBService {
     localStorage.setItem(PROJECTS_KEY, JSON.stringify(this.projects));
   }
 
-  // --- User Operations ---
+  private saveGems() {
+    localStorage.setItem(GEMS_KEY, JSON.stringify(this.gems));
+  }
 
+  // --- User Operations ---
   async getUsers(): Promise<User[]> {
-    await delay(300); // Simulate network
+    await delay(300);
     return [...this.users];
   }
 
@@ -76,7 +76,6 @@ class DBService {
   }
 
   // --- Project Operations ---
-
   async getProjects(): Promise<Project[]> {
     await delay(300);
     return [...this.projects];
@@ -88,10 +87,41 @@ class DBService {
     this.saveProjects();
   }
 
+  async updateProject(project: Project): Promise<void> {
+    await delay(300);
+    const index = this.projects.findIndex(p => p.id === project.id);
+    if (index !== -1) {
+      this.projects[index] = project;
+      this.saveProjects();
+    }
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     await delay(400);
     this.projects = this.projects.filter(p => p.id !== projectId);
     this.saveProjects();
+  }
+
+  async addProjectLog(projectId: string, log: ProjectLog): Promise<void> {
+    await delay(300);
+    const project = this.projects.find(p => p.id === projectId);
+    if (project) {
+        if (!project.logs) project.logs = [];
+        project.logs.push(log);
+        this.saveProjects();
+    }
+  }
+
+  // --- Gem Operations ---
+  async getGems(): Promise<Gem[]> {
+    await delay(200);
+    return [...this.gems];
+  }
+
+  async addGem(gem: Gem): Promise<void> {
+    await delay(300);
+    this.gems.push(gem);
+    this.saveGems();
   }
 }
 
