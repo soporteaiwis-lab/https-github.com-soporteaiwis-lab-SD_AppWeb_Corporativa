@@ -18,7 +18,8 @@ export const UploadAssistantModal = ({
   onClose: () => void, 
   onConfirm: () => void 
 }) => {
-  const targetUrl = type === 'drive' ? (project.driveLink || 'https://drive.google.com') : (project.githubLink || 'https://github.com');
+  const repo = project.repositories?.find(r => r.type === type);
+  const targetUrl = repo?.url || (type === 'drive' ? 'https://drive.google.com' : 'https://github.com');
   const [step, setStep] = useState(1);
 
   const handleOpenLink = () => {

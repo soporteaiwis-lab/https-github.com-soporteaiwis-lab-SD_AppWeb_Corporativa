@@ -1,70 +1,81 @@
-import { User, Project, Gem, ProjectLog } from '../types';
-import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS } from '../constants';
+import { User, Project, Gem, ProjectLog, Tool, Repository } from '../types';
+import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS, INITIAL_TOOLS } from '../constants';
 
-// Local Storage Keys
-// BUMPED TO V6 to force Armin's new project data to load
-const USERS_KEY = 'simpledata_users_v6'; 
-const PROJECTS_KEY = 'simpledata_projects_v6';
-const GEMS_KEY = 'simpledata_gems_v6';
+// Local Storage Keys - BUMPED TO V8 for Repository Migration
+const USERS_KEY = 'simpledata_users_v8'; 
+const PROJECTS_KEY = 'simpledata_projects_v8';
+const GEMS_KEY = 'simpledata_gems_v8';
+const TOOLS_KEY = 'simpledata_tools_v8';
 
-// Helper to simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 class DBService {
   private users: User[] = [];
   private projects: Project[] = [];
   private gems: Gem[] = [];
+  private tools: Tool[] = [];
 
   constructor() {
     this.loadInitialData();
   }
 
   private loadInitialData() {
-    // 1. Load raw data from LocalStorage
     const savedUsers = localStorage.getItem(USERS_KEY);
     const savedProjects = localStorage.getItem(PROJECTS_KEY);
     const savedGems = localStorage.getItem(GEMS_KEY);
+    const savedTools = localStorage.getItem(TOOLS_KEY);
 
     let localUsers: User[] = savedUsers ? JSON.parse(savedUsers) : [];
     let localProjects: Project[] = savedProjects ? JSON.parse(savedProjects) : [];
     let localGems: Gem[] = savedGems ? JSON.parse(savedGems) : [];
+    let localTools: Tool[] = savedTools ? JSON.parse(savedTools) : [];
 
-    // 2. SMART MERGE STRATEGY (Users)
+    // --- MIGRATION LOGIC FOR OLD PROJECTS (Convert driveLink/githubLink to repositories) ---
+    // This is crucial if we are loading old data from a previous version (or if we just bumped version but copy-pasted old JSON)
+    // Since we bumped the KEY to v8, localProjects will likely be empty initially unless user had v8 data.
+    // But if we ever needed to migrate:
+    localProjects = localProjects.map((p: any) => {
+        if (!p.repositories) {
+            const newRepos: Repository[] = [];
+            if (p.githubLink) newRepos.push({ id: 'r_gh_' + p.id, type: 'github', alias: 'Repositorio Principal', url: p.githubLink });
+            if (p.driveLink) newRepos.push({ id: 'r_dr_' + p.id, type: 'drive', alias: 'Carpeta Principal', url: p.driveLink });
+            return { ...p, repositories: newRepos };
+        }
+        return p;
+    });
+
+    // 2. Users Merge
     const mergedUsersMap = new Map<string, User>();
-    // First local
     localUsers.forEach(u => mergedUsersMap.set(u.id, u));
-    // Then code (Initial) overrides critical structural fields to ensure consistency
     INITIAL_USERS.forEach(initUser => {
         const existingUser = mergedUsersMap.get(initUser.id);
         if (existingUser) {
-            // MERGE: Keep local changes but FORCE project list sync from code if it's the default user
-            // This fixes the issue where Armin shows 2 projects instead of 4
             const combinedProjects = Array.from(new Set([...initUser.projects, ...existingUser.projects]));
-            
-            mergedUsersMap.set(initUser.id, {
-                ...existingUser,
-                projects: combinedProjects, // Ensure code-defined projects are present
-                role: initUser.role, // Force role update from code
-                name: initUser.name
-            });
+            mergedUsersMap.set(initUser.id, { ...existingUser, projects: combinedProjects, role: initUser.role, name: initUser.name });
         } else {
             mergedUsersMap.set(initUser.id, initUser);
         }
     });
     this.users = Array.from(mergedUsersMap.values());
 
-    // 3. SMART MERGE STRATEGY (Projects)
+    // 3. Projects Merge
     const mergedProjectsMap = new Map<string, Project>();
     localProjects.forEach(p => mergedProjectsMap.set(p.id, p));
     INITIAL_PROJECTS.forEach(initProj => {
         const existingProj = mergedProjectsMap.get(initProj.id);
         if (existingProj) {
+            // MERGE: Keep existing repositories if they exist, otherwise fallback or merge?
+            // Strategy: Trust local repositories if they exist and are not empty, else use init.
+            const repos = (existingProj.repositories && existingProj.repositories.length > 0) 
+                          ? existingProj.repositories 
+                          : initProj.repositories;
+            
             mergedProjectsMap.set(initProj.id, {
                 ...existingProj,
-                // Force critical fields from code
                 client: initProj.client,
                 name: initProj.name,
-                teamIds: Array.from(new Set([...initProj.teamIds, ...existingProj.teamIds]))
+                teamIds: Array.from(new Set([...initProj.teamIds, ...existingProj.teamIds])),
+                repositories: repos
             });
         } else {
             mergedProjectsMap.set(initProj.id, initProj);
@@ -72,11 +83,16 @@ class DBService {
     });
     this.projects = Array.from(mergedProjectsMap.values());
 
-    // 4. Gems
+    // 4. Gems & Tools
     const mergedGemsMap = new Map<string, Gem>();
     localGems.forEach(g => mergedGemsMap.set(g.id, g));
     INITIAL_GEMS.forEach(g => mergedGemsMap.set(g.id, g));
     this.gems = Array.from(mergedGemsMap.values());
+
+    const mergedToolsMap = new Map<string, Tool>();
+    localTools.forEach(t => mergedToolsMap.set(t.id, t));
+    INITIAL_TOOLS.forEach(t => { if (!mergedToolsMap.has(t.id)) mergedToolsMap.set(t.id, t); });
+    this.tools = Array.from(mergedToolsMap.values());
 
     this.saveAll();
   }
@@ -85,93 +101,35 @@ class DBService {
     localStorage.setItem(USERS_KEY, JSON.stringify(this.users));
     localStorage.setItem(PROJECTS_KEY, JSON.stringify(this.projects));
     localStorage.setItem(GEMS_KEY, JSON.stringify(this.gems));
+    localStorage.setItem(TOOLS_KEY, JSON.stringify(this.tools));
   }
 
-  // --- FORCE RESET ---
   async resetToDefaults(): Promise<void> {
       await delay(500);
-      // Hard reset to constants
       this.users = [...INITIAL_USERS];
       this.projects = [...INITIAL_PROJECTS];
       this.gems = [...INITIAL_GEMS];
+      this.tools = [...INITIAL_TOOLS];
       this.saveAll();
   }
 
-  // --- User Operations ---
-  async getUsers(): Promise<User[]> {
-    await delay(300);
-    return [...this.users];
-  }
+  // Generic Getters/Adders
+  async getUsers() { await delay(300); return [...this.users]; }
+  async addUser(u: User) { await delay(500); this.users.push(u); this.saveAll(); }
+  async updateUser(u: User) { await delay(300); const idx = this.users.findIndex(x => x.id === u.id); if(idx !== -1) { this.users[idx] = u; this.saveAll(); } }
+  async deleteUser(id: string) { await delay(400); this.users = this.users.filter(x => x.id !== id); this.saveAll(); }
 
-  async addUser(user: User): Promise<void> {
-    await delay(500);
-    this.users.push(user);
-    this.saveAll();
-  }
+  async getProjects() { await delay(300); return [...this.projects]; }
+  async addProject(p: Project) { await delay(500); this.projects.push(p); this.saveAll(); }
+  async updateProject(p: Project) { await delay(300); const idx = this.projects.findIndex(x => x.id === p.id); if(idx !== -1) { this.projects[idx] = p; this.saveAll(); } }
+  async deleteProject(id: string) { await delay(400); this.projects = this.projects.filter(x => x.id !== id); this.saveAll(); }
+  async addProjectLog(id: string, log: ProjectLog) { await delay(300); const p = this.projects.find(x => x.id === id); if(p) { if(!p.logs) p.logs=[]; p.logs.push(log); this.saveAll(); } }
 
-  async updateUser(user: User): Promise<void> {
-    await delay(300);
-    const index = this.users.findIndex(u => u.id === user.id);
-    if (index !== -1) {
-      this.users[index] = user;
-      this.saveAll();
-    }
-  }
+  async getGems() { await delay(200); return [...this.gems]; }
+  async addGem(g: Gem) { await delay(300); this.gems.push(g); this.saveAll(); }
 
-  async deleteUser(userId: string): Promise<void> {
-    await delay(400);
-    this.users = this.users.filter(u => u.id !== userId);
-    this.saveAll();
-  }
-
-  // --- Project Operations ---
-  async getProjects(): Promise<Project[]> {
-    await delay(300);
-    return [...this.projects];
-  }
-
-  async addProject(project: Project): Promise<void> {
-    await delay(500);
-    this.projects.push(project);
-    this.saveAll();
-  }
-
-  async updateProject(project: Project): Promise<void> {
-    await delay(300);
-    const index = this.projects.findIndex(p => p.id === project.id);
-    if (index !== -1) {
-      this.projects[index] = project;
-      this.saveAll();
-    }
-  }
-
-  async deleteProject(projectId: string): Promise<void> {
-    await delay(400);
-    this.projects = this.projects.filter(p => p.id !== projectId);
-    this.saveAll();
-  }
-
-  async addProjectLog(projectId: string, log: ProjectLog): Promise<void> {
-    await delay(300);
-    const project = this.projects.find(p => p.id === projectId);
-    if (project) {
-        if (!project.logs) project.logs = [];
-        project.logs.push(log);
-        this.saveAll();
-    }
-  }
-
-  // --- Gem Operations ---
-  async getGems(): Promise<Gem[]> {
-    await delay(200);
-    return [...this.gems];
-  }
-
-  async addGem(gem: Gem): Promise<void> {
-    await delay(300);
-    this.gems.push(gem);
-    this.saveAll();
-  }
+  async getTools() { await delay(200); return [...this.tools]; }
+  async addTool(t: Tool) { await delay(300); this.tools.push(t); this.saveAll(); }
 }
 
 export const db = new DBService();

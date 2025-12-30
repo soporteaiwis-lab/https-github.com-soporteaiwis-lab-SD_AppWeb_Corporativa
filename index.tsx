@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { User, Project, AppRoute, Gem, UserRole } from './types';
+import { User, Project, AppRoute, Gem, UserRole, Tool } from './types';
 import { db } from './services/dbService';
 
 // Components
@@ -86,15 +86,17 @@ const App = () => {
   const [dbUsers, setDbUsers] = useState<User[]>([]);
   const [dbProjects, setDbProjects] = useState<Project[]>([]);
   const [dbGems, setDbGems] = useState<Gem[]>([]);
+  const [dbTools, setDbTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Load Data
   const loadData = async () => {
     try {
-      const [u, p, g] = await Promise.all([db.getUsers(), db.getProjects(), db.getGems()]);
+      const [u, p, g, t] = await Promise.all([db.getUsers(), db.getProjects(), db.getGems(), db.getTools()]);
       setDbUsers(u);
       setDbProjects(p);
       setDbGems(g);
+      setDbTools(t);
     } catch (e) {
       console.error("Failed to load DB", e);
     } finally {
@@ -113,6 +115,7 @@ const App = () => {
   const handleDeleteUser = async (id: string) => { if(confirm('¿Eliminar colaborador? Esta acción no se puede deshacer.')) { await db.deleteUser(id); loadData(); }};
   
   const handleAddGem = async (g: Gem) => { await db.addGem(g); loadData(); };
+  const handleAddTool = async (t: Tool) => { await db.addTool(t); loadData(); };
 
   const handleResetDB = async () => {
       setLoading(true);
@@ -181,7 +184,7 @@ const App = () => {
       <MobileNav currentRoute={safeRoute} onNavigate={handleNavigate} currentUser={user} />
 
       {/* Tools Modal (Global Overlay) */}
-      {isToolsOpen && <ToolsModal onClose={() => setIsToolsOpen(false)} />}
+      {isToolsOpen && <ToolsModal onClose={() => setIsToolsOpen(false)} tools={dbTools} onAddTool={handleAddTool} />}
 
       {/* Chat FAB (Floating Action Button) - Adjusted for mobile safe area */}
       {!isChatOpen && (

@@ -133,7 +133,9 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
       const { file, projectId, type } = pendingUpload;
       const project = projects.find(p => p.id === projectId);
       if (project) {
-        const targetUrl = type === 'drive' ? (project.driveLink || 'https://drive.google.com') : (project.githubLink || 'https://github.com');
+        const repo = project.repositories?.find(r => r.type === type);
+        const targetUrl = repo?.url || (type === 'drive' ? 'https://drive.google.com' : 'https://github.com');
+        
         const newLog: ProjectLog = {
           id: 'up' + Date.now(),
           date: new Date().toISOString(),

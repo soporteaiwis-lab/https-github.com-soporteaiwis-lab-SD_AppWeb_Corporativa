@@ -13,38 +13,45 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
-  password?: string; // New field for authentication
+  password?: string;
   avatar: string;
-  skills: { name: string; level: number }[]; // 0-100
-  projects: string[]; // Project IDs
+  skills: { name: string; level: number }[];
+  projects: string[];
 }
 
 export interface ProjectLog {
   id: string;
-  date: string; // ISO string
+  date: string;
   text: string;
   author: string;
+  link?: string; // Added link support for logs
+}
+
+export interface Repository {
+  id: string;
+  alias: string; // Friendly name (e.g. "Backend Repo", "Carpeta Facturas")
+  url: string; // The exact URL
+  type: 'github' | 'drive' | 'other';
 }
 
 export interface Project {
   id: string;
   name: string;
   client: string;
-  encargadoCliente?: string; // Client Contact
-  leadId: string; // Internal JP
+  encargadoCliente?: string;
+  leadId: string;
   teamIds: string[];
   status: 'En Curso' | 'Finalizado' | 'Planning';
   isOngoing: boolean;
-  report: boolean; // For weekly report inclusion
-  deadline: string; // Used as End Date
+  report: boolean;
+  deadline: string;
   startDate?: string;
-  progress: number; // 0-100
+  progress: number;
   description: string;
   technologies: string[];
   year: number;
   logs: ProjectLog[];
-  driveLink?: string;
-  githubLink?: string;
+  repositories: Repository[]; // NEW: Flexible repo management
 }
 
 export interface Gem {
@@ -53,6 +60,15 @@ export interface Gem {
   description: string;
   url: string;
   icon: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  url: string;
+  icon: string;
+  color: string;
+  isLocal?: boolean;
 }
 
 export interface ChatMessage {
@@ -69,5 +85,5 @@ export enum AppRoute {
   TEAM = 'team',
   REPORTS = 'reports',
   TOOLS = 'tools',
-  ADMIN = 'admin_panel' // New Route
+  ADMIN = 'admin_panel'
 }
