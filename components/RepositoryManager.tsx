@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Project, Repository, ProjectLog } from '../types';
 
 const Icon = ({ name, className = "" }: { name: string, className?: string }) => (
@@ -17,18 +17,28 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [activeTab, setActiveTab] = useState<'github' | 'drive'>(initialType);
   const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
   
+  // GitHub Token State (Persisted in LocalStorage for UX)
+  const [githubToken, setGithubToken] = useState(localStorage.getItem('simpledata_github_pat') || '');
+  const [showTokenInput, setShowTokenInput] = useState(false);
+
   // Add New Repo State
   const [newRepo, setNewRepo] = useState({ alias: '', url: '' });
 
   // Upload State
-  const [uploadState, setUploadState] = useState<'idle' | 'selecting' | 'uploading' | 'success'>('idle');
+  const [uploadState, setUploadState] = useState<'idle' | 'selecting' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadStatusMsg, setUploadStatusMsg] = useState('');
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const repositories = project.repositories?.filter(r => r.type === activeTab) || [];
+
+  useEffect(() => {
+      if (githubToken) {
+          localStorage.setItem('simpledata_github_pat', githubToken);
+      }
+  }, [githubToken]);
 
   const handleAddRepo = () => {
       if (!newRepo.alias || !newRepo.url) return;
@@ -53,52 +63,141 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   };
 
   const handleTriggerUpload = (repoId: string) => {
+      if (activeTab === 'github' && !githubToken) {
+          alert("⚠️ Para subir archivos directo a GitHub, necesitas configurar tu Token de Acceso (PAT) primero.");
+          setShowTokenInput(true);
+          return;
+      }
       setSelectedRepoId(repoId);
       if (fileInputRef.current) fileInputRef.current.click();
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
-          setSelectedFile(e.target.files[0]);
+          const file = e.target.files[0];
+          setSelectedFile(file);
           setUploadState('uploading');
-          simulateUpload(e.target.files[0]);
+          setUploadStatusMsg('Preparando archivo...');
+          
+          const repo = project.repositories?.find(r => r.id === selectedRepoId);
+          if (!repo) return;
+
+          // --- LOGIC SPLIT: REAL GITHUB API vs DRIVE LINK ---
+          if (activeTab === 'github') {
+             await uploadToGitHubReal(file, repo);
+          } else {
+             // Drive Logic (Link Opener)
+             window.open(repo.url, '_blank');
+             simulateDriveUpload(file);
+          }
       }
   };
 
-  const simulateUpload = (file: File) => {
+  // --- REAL GITHUB API UPLOAD ---
+  const uploadToGitHubReal = async (file: File, repo: Repository) => {
+      try {
+          setUploadStatusMsg('Conectando con GitHub API...');
+          setProgress(10);
+
+          // 1. Parse Repo URL to get Owner and Repo Name
+          // Supports: https://github.com/owner/repo or https://github.com/owner/repo/tree/main...
+          const cleanUrl = repo.url.replace(/\/$/, "").replace(/\.git$/, "");
+          const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+          
+          if (!match) throw new Error("URL de repositorio inválida. No se pudo detectar usuario/repo.");
+          const owner = match[1];
+          const repoName = match[2];
+
+          // 2. Read File as Base64
+          setUploadStatusMsg('Procesando binarios...');
+          const base64Content = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = () => {
+                  const result = reader.result as string;
+                  // Remove "data:*/*;base64," prefix for GitHub API
+                  const base64 = result.split(',')[1];
+                  resolve(base64);
+              };
+              reader.onerror = error => reject(error);
+          });
+          setProgress(40);
+
+          // 3. API PUT Request (Create/Update File)
+          setUploadStatusMsg(`Subiendo ${file.name} a ${owner}/${repoName}...`);
+          const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; // Upload to root for now
+          
+          const response = await fetch(apiUrl, {
+              method: 'PUT',
+              headers: {
+                  'Authorization': `Bearer ${githubToken}`,
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/vnd.github.v3+json'
+              },
+              body: JSON.stringify({
+                  message: `Add ${file.name} via SimpleData Portal`,
+                  content: base64Content,
+                  // Note: If updating an existing file, 'sha' is required. 
+                  // For this prototype, we assume new files or overwrite blindly (which API might reject without SHA, but let's try basic create)
+              })
+          });
+
+          setProgress(80);
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              if (response.status === 422) throw new Error("El archivo ya existe o hubo un conflicto de validación (SHA).");
+              if (response.status === 401) throw new Error("Token inválido o expirado.");
+              if (response.status === 404) throw new Error("Repositorio no encontrado o sin permisos.");
+              throw new Error(errorData.message || "Error desconocido de GitHub.");
+          }
+
+          const data = await response.json();
+          setProgress(100);
+          completeUpload(file, repo, data.content?.html_url || repo.url);
+
+      } catch (error: any) {
+          console.error(error);
+          setUploadState('error');
+          setUploadStatusMsg(error.message);
+      }
+  };
+
+  const simulateDriveUpload = (file: File) => {
+      // Keep existing simulation for Drive since we can't do direct upload without complex OAuth
       let pct = 0;
       const interval = setInterval(() => {
-          pct += Math.floor(Math.random() * 15) + 5;
+          pct += 10;
           if (pct > 100) {
               pct = 100;
               clearInterval(interval);
-              completeUpload(file);
+              completeUpload(file, project.repositories.find(r => r.id === selectedRepoId)!);
           }
           setProgress(pct);
       }, 200);
   };
 
-  const completeUpload = (file: File) => {
-      const repo = project.repositories.find(r => r.id === selectedRepoId);
-      if (repo) {
-          const newLog: ProjectLog = {
-              id: `log_${Date.now()}`,
-              date: new Date().toISOString(),
-              author: currentUser.name,
-              text: `✅ ARCHIVO SUBIDO: "${file.name}" a ${repo.alias}`,
-              link: repo.url
-          };
-          onUpdateProject({ 
-              ...project, 
-              logs: [...(project.logs || []), newLog] 
-          });
-      }
+  const completeUpload = (file: File, repo: Repository, finalUrl?: string) => {
+      const newLog: ProjectLog = {
+          id: `log_${Date.now()}`,
+          date: new Date().toISOString(),
+          author: currentUser.name,
+          text: `✅ ARCHIVO SUBIDO: "${file.name}" a ${repo.alias} (GitHub Direct)`,
+          link: finalUrl || repo.url
+      };
+      onUpdateProject({ 
+          ...project, 
+          logs: [...(project.logs || []), newLog] 
+      });
+      
       setUploadState('success');
+      setUploadStatusMsg('¡Sincronización Completada!');
       setTimeout(() => {
           setUploadState('idle');
           setSelectedFile(null);
           setProgress(0);
-      }, 2000);
+          setUploadStatusMsg('');
+      }, 2500);
   };
 
   const themeColor = activeTab === 'github' ? 'slate' : 'green';
@@ -129,7 +228,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                     onClick={() => { setActiveTab('github'); setViewMode('list'); }} 
                     className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'github' ? 'bg-slate-50 text-slate-900 border-b-2 border-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    <Icon name="fab fa-github" className="mr-2" /> GITHUB
+                    <Icon name="fab fa-github" className="mr-2" /> GITHUB (API)
                 </button>
                 <button 
                     onClick={() => { setActiveTab('drive'); setViewMode('list'); }} 
@@ -144,17 +243,29 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 
                 {/* UPLOAD OVERLAY */}
                 {uploadState === 'uploading' && (
-                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in">
-                        <div className="w-20 h-20 mb-6 relative">
+                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+                        <div className="w-20 h-20 mb-6 relative mx-auto">
                             <Icon name="fa-circle-notch" className={`text-6xl text-${themeColor}-200 animate-spin absolute inset-0`} />
                             <Icon name="fa-cloud-upload-alt" className={`text-2xl text-${themeColor}-600 absolute inset-0 m-auto`} />
                         </div>
-                        <h3 className="text-xl font-bold text-slate-800 mb-2">Subiendo Archivo...</h3>
-                        <p className="text-slate-500 mb-6">{selectedFile?.name}</p>
-                        <div className="w-full max-w-md bg-slate-100 rounded-full h-4 overflow-hidden">
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">Sincronizando...</h3>
+                        <p className="text-slate-500 mb-6 font-medium">{uploadStatusMsg}</p>
+                        
+                        <div className="w-full max-w-md bg-slate-100 rounded-full h-4 overflow-hidden mx-auto">
                             <div className={`h-full bg-${themeColor}-600 transition-all duration-200`} style={{ width: `${progress}%` }}></div>
                         </div>
-                        <p className="mt-2 text-xs font-bold text-slate-400">{progress}% Completado</p>
+                    </div>
+                )}
+
+                {/* ERROR OVERLAY */}
+                {uploadState === 'error' && (
+                    <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
+                        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600 text-4xl mx-auto">
+                            <Icon name="fa-exclamation-triangle" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Error de Sincronización</h3>
+                        <p className="text-red-500 font-medium mb-6 bg-red-50 p-3 rounded border border-red-100">{uploadStatusMsg}</p>
+                        <button onClick={() => setUploadState('idle')} className="px-6 py-2 bg-slate-800 text-white rounded-lg">Intentar de nuevo</button>
                     </div>
                 )}
 
@@ -164,15 +275,40 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                         <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600 text-4xl">
                             <Icon name="fa-check" />
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-900 mb-2">¡Carga Exitosa!</h3>
-                        <p className="text-slate-500 text-center">El archivo se ha registrado en la bitácora del proyecto y vinculado al repositorio.</p>
+                        <h3 className="text-2xl font-bold text-slate-900 mb-2">¡Sincronización Exitosa!</h3>
+                        <p className="text-slate-500 text-center">{uploadStatusMsg}</p>
                     </div>
                 )}
-
 
                 {/* VIEW MODE: LIST */}
                 {viewMode === 'list' && (
                     <div className="space-y-4">
+                        {activeTab === 'github' && (
+                            <div className="bg-slate-800 text-slate-300 p-4 rounded-xl mb-4 text-xs border border-slate-700">
+                                <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowTokenInput(!showTokenInput)}>
+                                    <div className="flex items-center gap-2">
+                                        <Icon name="fa-key" className="text-yellow-500" />
+                                        <span className="font-bold text-white">Configuración API GitHub</span>
+                                        {githubToken ? <span className="text-green-400">(Token Activo)</span> : <span className="text-red-400">(Requerido)</span>}
+                                    </div>
+                                    <Icon name={showTokenInput ? "fa-chevron-up" : "fa-chevron-down"} />
+                                </div>
+                                {showTokenInput && (
+                                    <div className="mt-3 animate-fade-in">
+                                        <p className="mb-2">Para subir archivos directo, ingresa tu <a href="https://github.com/settings/tokens" target="_blank" className="underline text-blue-400">Personal Access Token (Classic)</a> con permisos de <code>repo</code>.</p>
+                                        <input 
+                                            type="password" 
+                                            className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white font-mono"
+                                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                                            value={githubToken}
+                                            onChange={e => setGithubToken(e.target.value)}
+                                        />
+                                        <p className="mt-1 text-slate-500">Se guardará localmente en tu navegador.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
                                 {activeTab === 'drive' ? 'Carpetas Vinculadas' : 'Repositorios Vinculados'} ({repositories.length})
@@ -220,7 +356,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                             onClick={() => handleTriggerUpload(repo.id)}
                                             className={`flex-1 py-2 bg-${themeColor}-600 hover:bg-${themeColor}-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm`}
                                         >
-                                            <Icon name="fa-cloud-upload-alt" /> Subir Archivo
+                                            <Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir (Directo)' : 'Subir Archivo'}
                                         </button>
                                     </div>
                                 </div>
@@ -272,7 +408,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             {/* Footer Tip */}
             {viewMode === 'list' && (
                 <div className="p-4 bg-slate-100 text-center text-xs text-slate-500 border-t border-slate-200">
-                    <Icon name="fa-info-circle" /> Gestiona múltiples repositorios y carpetas por proyecto.
+                    <Icon name="fa-info-circle" /> {activeTab === 'github' ? 'Usa tu Token para subir archivos directo.' : 'Gestiona carpetas de Drive.'}
                 </div>
             )}
         </div>
