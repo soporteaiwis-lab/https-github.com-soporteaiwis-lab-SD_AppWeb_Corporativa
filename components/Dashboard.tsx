@@ -62,36 +62,45 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
 
   return (
     <div className="space-y-6 animate-fade-in print:hidden pb-20 lg:pb-0">
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-2">
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-end mb-8 gap-4">
         <div>
           <h2 className="text-2xl lg:text-3xl font-bold text-simple-900">Hola, {currentUser.name.split(' ')[0]}</h2>
           <p className="text-slate-500 mt-1 text-sm lg:text-base">Bienvenido al ecosistema corporativo SimpleData.</p>
         </div>
-        <div className="flex gap-4">
-             {/* System Status Widget */}
-             <div className="hidden md:flex items-center gap-3 bg-white p-2 px-4 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex items-center gap-2" title={isGeminiReady ? "Gemini AI: Conectado" : "Gemini AI: Sin Llave"}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${isGeminiReady ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
-                    <span className="text-xs font-bold text-slate-600">AI</span>
-                </div>
-                <div className="w-[1px] h-4 bg-slate-200"></div>
-                <div className="flex items-center gap-2" title={isGithubReady ? "GitHub API: Token Configurado" : "GitHub API: Manual"}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${isGithubReady ? 'bg-green-500' : 'bg-orange-400'}`}></div>
-                    <span className="text-xs font-bold text-slate-600">Git</span>
-                </div>
-                <div className="w-[1px] h-4 bg-slate-200"></div>
-                <div className="flex items-center gap-2" title={isDriveReady ? "Google Drive: Client ID Configurado" : "Google Drive: Sin Client ID"}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${isDriveReady ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                    <span className="text-xs font-bold text-slate-600">Drive</span>
-                </div>
-                <div className="w-[1px] h-4 bg-slate-200"></div>
-                <button onClick={() => setShowConfig(true)} className="text-slate-400 hover:text-simple-600 transition-colors" title="Configuración Manual de Llaves">
-                    <Icon name="fa-cog" />
-                </button>
-             </div>
-             
-             <div className="text-left lg:text-right w-full lg:w-auto self-center">
+        
+        {/* Header Actions - Responsive Fix */}
+        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
+             <div className="text-left lg:text-right">
                 <p className="text-xs lg:text-sm font-medium text-slate-400">{new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+             </div>
+
+             <div className="flex items-center gap-3">
+                 {/* System Status Widget (Hidden on Mobile to save space, but dots preserved if needed or hidden entirely) */}
+                 <div className="hidden md:flex items-center gap-3 bg-white p-2 px-4 rounded-xl shadow-sm border border-slate-200">
+                    <div className="flex items-center gap-2" title={isGeminiReady ? "Gemini AI: Conectado" : "Gemini AI: Sin Llave"}>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isGeminiReady ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}></div>
+                        <span className="text-xs font-bold text-slate-600">AI</span>
+                    </div>
+                    <div className="w-[1px] h-4 bg-slate-200"></div>
+                    <div className="flex items-center gap-2" title={isGithubReady ? "GitHub API: Token Configurado" : "GitHub API: Manual"}>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isGithubReady ? 'bg-green-500' : 'bg-orange-400'}`}></div>
+                        <span className="text-xs font-bold text-slate-600">Git</span>
+                    </div>
+                    <div className="w-[1px] h-4 bg-slate-200"></div>
+                    <div className="flex items-center gap-2" title={isDriveReady ? "Google Drive: Client ID Configurado" : "Google Drive: Sin Client ID"}>
+                        <div className={`w-2.5 h-2.5 rounded-full ${isDriveReady ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                        <span className="text-xs font-bold text-slate-600">Drive</span>
+                    </div>
+                 </div>
+                 
+                 {/* Config Button - ALWAYS VISIBLE */}
+                 <button 
+                    onClick={() => setShowConfig(true)} 
+                    className="w-10 h-10 flex items-center justify-center bg-white text-slate-400 hover:text-simple-600 rounded-xl shadow-sm border border-slate-200 transition-colors" 
+                    title="Configuración Manual de Llaves"
+                 >
+                    <Icon name="fa-cog" />
+                 </button>
              </div>
         </div>
       </header>
@@ -159,12 +168,12 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
       {/* Manual Configuration Modal */}
       {showConfig && (
           <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-              <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-                  <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+              <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-slate-900 p-4 flex justify-between items-center text-white shrink-0">
                       <h3 className="font-bold flex items-center gap-2"><Icon name="fa-cogs" /> Configuración de Sistema</h3>
                       <button onClick={() => setShowConfig(false)} className="hover:text-red-400"><Icon name="fa-times" /></button>
                   </div>
-                  <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                  <div className="p-6 space-y-4 overflow-y-auto flex-1">
                       <p className="text-sm text-slate-500 bg-blue-50 p-3 rounded-lg border border-blue-100">
                           <Icon name="fa-info-circle" /> Si tu archivo <code>.env</code> no se carga, ingresa tus llaves aquí. Se guardarán localmente en tu navegador.
                       </p>
@@ -227,11 +236,10 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                              </div>
                           </div>
                       </div>
-
-                      <div className="pt-4 flex justify-end gap-2">
-                          <button onClick={() => setShowConfig(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancelar</button>
-                          <button onClick={handleSaveKeys} className="px-6 py-2 bg-simple-600 text-white font-bold rounded-lg hover:bg-simple-700 shadow-lg">Guardar y Recargar</button>
-                      </div>
+                  </div>
+                  <div className="p-4 border-t shrink-0 bg-slate-50 flex justify-end gap-2">
+                      <button onClick={() => setShowConfig(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cancelar</button>
+                      <button onClick={handleSaveKeys} className="px-6 py-2 bg-simple-600 text-white font-bold rounded-lg hover:bg-simple-700 shadow-lg">Guardar y Recargar</button>
                   </div>
               </div>
           </div>

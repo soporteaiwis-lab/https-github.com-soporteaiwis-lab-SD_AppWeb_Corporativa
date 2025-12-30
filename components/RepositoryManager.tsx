@@ -456,55 +456,56 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center backdrop-blur-sm p-4 animate-fade-in">
-        <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col h-[600px] md:h-auto">
+        {/* RESPONSIVE CONTAINER FIX: h-[90vh] on mobile to prevent overflow, md:h-auto for desktop */}
+        <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col h-[90vh] md:h-auto md:max-h-[85vh]">
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
 
             {/* Header */}
-            <div className={`p-6 bg-${themeColor}-900 text-white flex justify-between items-center transition-colors duration-300`}>
+            <div className={`p-6 bg-${themeColor}-900 text-white flex justify-between items-center transition-colors duration-300 shrink-0`}>
                 <div className="flex items-center gap-4">
                     <div className={`w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-2xl`}>
                         <Icon name={themeIcon} />
                     </div>
                     <div>
                         <h2 className="text-xl font-bold">Gestor de Repositorios</h2>
-                        <p className="text-white/60 text-sm">{project.name}</p>
+                        <p className="text-white/60 text-sm truncate max-w-[200px]">{project.name}</p>
                     </div>
                 </div>
                 <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"><Icon name="fa-times" /></button>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-200">
+            <div className="flex border-b border-slate-200 shrink-0">
                 <button 
                     onClick={() => { setActiveTab('github'); setViewMode('list'); }} 
                     className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'github' ? 'bg-slate-50 text-slate-900 border-b-2 border-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    <Icon name="fab fa-github" className="mr-2" /> GITHUB (API)
+                    <Icon name="fab fa-github" className="mr-2" /> GITHUB
                 </button>
                 <button 
                     onClick={() => { setActiveTab('drive'); setViewMode('list'); }} 
                     className={`flex-1 py-4 font-bold text-sm transition-colors ${activeTab === 'drive' ? 'bg-green-50 text-green-800 border-b-2 border-green-600' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                    <Icon name="fab fa-google-drive" className="mr-2" /> GOOGLE DRIVE
+                    <Icon name="fab fa-google-drive" className="mr-2" /> DRIVE
                 </button>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto p-6 bg-slate-50 relative">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-50 relative">
                 
-                {/* PICKER OVERLAY */}
+                {/* PICKER OVERLAY - RESPONSIVE FIX */}
                 {isPickerOpen && (
                     <div className="absolute inset-0 bg-white z-50 flex flex-col p-4 animate-fade-in">
-                        <div className="flex justify-between items-center mb-4 border-b pb-2">
+                        <div className="flex justify-between items-center mb-4 border-b pb-2 shrink-0">
                              <div>
-                                 <h3 className="font-bold text-slate-800">Seleccionar Carpeta Raíz</h3>
-                                 <p className="text-xs text-slate-500">Navega y selecciona dónde se creará el proyecto.</p>
+                                 <h3 className="font-bold text-slate-800">Seleccionar Carpeta</h3>
+                                 <p className="text-xs text-slate-500">Navega y selecciona destino.</p>
                              </div>
                              <button onClick={() => setIsPickerOpen(false)} className="text-slate-400 hover:text-slate-600"><Icon name="fa-times" /></button>
                         </div>
                         
                         {/* Breadcrumbs */}
-                        <div className="flex gap-1 text-xs mb-3 overflow-x-auto whitespace-nowrap pb-2">
+                        <div className="flex gap-1 text-xs mb-3 overflow-x-auto whitespace-nowrap pb-2 shrink-0">
                             {pickerBreadcrumb.map((crumb, idx) => (
                                 <div key={crumb.id} className="flex items-center">
                                     <button 
@@ -518,7 +519,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                             ))}
                         </div>
 
-                        {/* List */}
+                        {/* List - Flex 1 to take available space */}
                         <div className="flex-1 overflow-y-auto bg-slate-50 rounded-lg border border-slate-200 p-2 space-y-1">
                              {pickerLoading ? (
                                  <div className="flex items-center justify-center h-full text-slate-400 gap-2">
@@ -528,10 +529,10 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                  <div className="flex items-center justify-center h-full text-slate-400 text-sm">Carpeta vacía</div>
                              ) : (
                                  pickerItems.map(item => (
-                                     <div key={item.id} className="flex items-center justify-between p-2 hover:bg-white hover:shadow-sm rounded cursor-pointer group" onClick={() => handleEnterFolder(item)}>
+                                     <div key={item.id} className="flex items-center justify-between p-3 hover:bg-white hover:shadow-sm rounded cursor-pointer group border-b border-transparent hover:border-slate-100" onClick={() => handleEnterFolder(item)}>
                                           <div className="flex items-center gap-3">
                                               <Icon name="fa-folder" className="text-yellow-400 text-lg" />
-                                              <span className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{item.name}</span>
+                                              <span className="text-sm text-slate-700 font-medium truncate max-w-[180px]">{item.name}</span>
                                           </div>
                                           <Icon name="fa-chevron-right" className="text-slate-300 text-xs group-hover:text-slate-500" />
                                      </div>
@@ -539,17 +540,17 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                              )}
                         </div>
 
-                        {/* Actions */}
-                        <div className="mt-4 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            <div className="text-xs text-blue-800">
-                                Selección actual:<br/>
+                        {/* Actions - Fixed at bottom via shrink-0 in parent flex */}
+                        <div className="mt-4 shrink-0 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <div className="text-xs text-blue-800 truncate mr-2">
+                                Selección:<br/>
                                 <strong className="text-sm">{pickerCurrentFolder.name}</strong>
                             </div>
                             <button 
                                 onClick={confirmSelection}
-                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all"
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all shrink-0"
                             >
-                                <Icon name="fa-check" /> Seleccionar Esta
+                                <Icon name="fa-check" /> Seleccionar
                             </button>
                         </div>
                     </div>
@@ -604,7 +605,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-                                {activeTab === 'drive' ? 'Carpetas Vinculadas' : 'Repositorios Vinculados'} ({repositories.length})
+                                {activeTab === 'drive' ? 'Carpetas' : 'Repositorios'} ({repositories.length})
                             </h3>
                             <button onClick={() => setViewMode('add')} className={`text-xs font-bold text-${themeColor}-600 hover:underline flex items-center gap-1`}>
                                 <Icon name="fa-plus" /> Agregar Nuevo
@@ -629,7 +630,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                             </div>
                                             <div>
                                                 <h4 className="font-bold text-slate-800">{repo.alias}</h4>
-                                                <a href={repo.url} target="_blank" className="text-xs text-slate-400 hover:text-blue-500 truncate max-w-[200px] block underline">
+                                                <a href={repo.url} target="_blank" className="text-xs text-slate-400 hover:text-blue-500 truncate max-w-[150px] md:max-w-[200px] block underline">
                                                     {repo.url}
                                                 </a>
                                             </div>
@@ -654,9 +655,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                             }`}
                                         >
                                             {activeTab === 'drive' && !driveToken ? (
-                                                <><Icon name="fab fa-google" /> Conectar & Subir</>
+                                                <><Icon name="fab fa-google" /> Conectar</>
                                             ) : (
-                                                <><Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir' : 'Seleccionar Archivo'}</>
+                                                <><Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir' : 'Elegir'}</>
                                             )}
                                         </button>
                                     </div>
@@ -692,13 +693,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                     
                                     {/* TARGET FOLDER SELECTOR */}
                                     <div className="mb-4 bg-white/60 p-2 rounded border border-green-100 flex items-center justify-between">
-                                        <div className="text-xs text-green-800">
+                                        <div className="text-xs text-green-800 overflow-hidden mr-2">
                                             <span className="font-bold uppercase opacity-60">Crear en:</span><br/>
-                                            <span className="font-bold flex items-center gap-1"><Icon name="fa-folder-open" /> {targetParent.name}</span>
+                                            <span className="font-bold flex items-center gap-1 truncate"><Icon name="fa-folder-open" /> {targetParent.name}</span>
                                         </div>
                                         <button 
                                             onClick={openPicker}
-                                            className="text-[10px] bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded font-bold transition-colors"
+                                            className="text-[10px] bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded font-bold transition-colors shrink-0"
                                         >
                                             Cambiar
                                         </button>
@@ -706,8 +707,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
                                     {creationStatus === 'idle' ? (
                                         <div className="flex items-end gap-3">
-                                             <div className="flex-1">
-                                                <label className="block text-[10px] font-bold text-green-800 uppercase mb-1">Correlativo</label>
+                                             <div className="flex-1 min-w-[50px]">
+                                                <label className="block text-[10px] font-bold text-green-800 uppercase mb-1">ID</label>
                                                 <input 
                                                     value={correlative} 
                                                     onChange={e => setCorrelative(e.target.value)}
@@ -715,7 +716,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                                     placeholder="000"
                                                 />
                                              </div>
-                                             <div className="flex-[3]">
+                                             <div className="flex-[3] overflow-hidden">
                                                 <label className="block text-[10px] font-bold text-green-800 uppercase mb-1">Nombre Previsto</label>
                                                 <div className="w-full bg-white/50 border border-green-200 rounded p-2 text-sm text-green-900 font-mono truncate">
                                                     {correlative}_{project.name.replace(/\s+/g, "")}_{project.encargadoCliente?.replace(/\s+/g, "") || 'Manager'}
@@ -723,7 +724,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                              </div>
                                              <button 
                                                 onClick={handleCreateStructure}
-                                                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow-lg transition-transform active:scale-95"
+                                                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow-lg transition-transform active:scale-95 shrink-0"
                                              >
                                                 Generar
                                              </button>
