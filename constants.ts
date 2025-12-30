@@ -1,15 +1,38 @@
 import { User, UserRole, Project, Gem, Tool } from './types';
 
 // --- CONFIGURACIÓN DE ENTORNO (.ENV) ---
-// En tu entorno local, crea un archivo .env en la raíz.
-// El sistema leerá automáticamente estas variables.
-export const APP_CONFIG = {
-  // Leída desde process.env.API_KEY (Gemini)
-  GEMINI_API_KEY: process.env.API_KEY || '', 
+// Helper para leer variables en distintos entornos (Vite, CRA, Node)
+const getEnvVar = (key: string): string => {
+  // 1. Intento estándar (Node / Webpack / CRA sin prefijo si está configurado)
+  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+    return process.env[key] as string;
+  }
+  // 2. Intento Create React App (Prefijo REACT_APP_)
+  if (typeof process !== 'undefined' && process.env && process.env[`REACT_APP_${key}`]) {
+    return process.env[`REACT_APP_${key}`] as string;
+  }
+  // 3. Intento Vite (import.meta.env) - Usamos any para evitar error TS si no es vite
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      // @ts-ignore
+      if (import.meta.env[key]) return import.meta.env[key];
+      // @ts-ignore
+      if (import.meta.env[`VITE_${key}`]) return import.meta.env[`VITE_${key}`];
+    }
+  } catch (e) {
+    // Ignore errors in non-module envs
+  }
   
-  // Leída desde process.env.GITHUB_TOKEN (GitHub PAT)
-  // Si estás en local y no usas .env, puedes poner el token aquí temporalmente (no recomendado para prod)
-  GITHUB_TOKEN: process.env.GITHUB_TOKEN || '' 
+  return '';
+};
+
+export const APP_CONFIG = {
+  // Busca: API_KEY, REACT_APP_API_KEY, o VITE_API_KEY
+  GEMINI_API_KEY: getEnvVar('API_KEY'), 
+  
+  // Busca: GITHUB_TOKEN, REACT_APP_GITHUB_TOKEN, o VITE_GITHUB_TOKEN
+  GITHUB_TOKEN: getEnvVar('GITHUB_TOKEN') 
 };
 
 // Real SimpleData Team
