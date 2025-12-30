@@ -21,12 +21,30 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
   });
 
   const handleSaveKeys = () => {
-      if (manualKeys.apiKey) localStorage.setItem('simpledata_env_API_KEY', manualKeys.apiKey);
-      if (manualKeys.githubToken) localStorage.setItem('simpledata_env_GITHUB_TOKEN', manualKeys.githubToken);
-      
-      // Force reload to pick up changes in APP_CONFIG (since it reads on load)
-      if (confirm("Claves guardadas. El sistema se recargará para aplicar los cambios.")) {
+      try {
+          // 1. Guardar Gemini API Key
+          if (manualKeys.apiKey && manualKeys.apiKey.trim() !== '') {
+              localStorage.setItem('simpledata_env_API_KEY', manualKeys.apiKey.trim());
+          } else {
+              localStorage.removeItem('simpledata_env_API_KEY');
+          }
+
+          // 2. Guardar GitHub Token (En ambas llaves para asegurar compatibilidad total)
+          if (manualKeys.githubToken && manualKeys.githubToken.trim() !== '') {
+              const token = manualKeys.githubToken.trim();
+              localStorage.setItem('simpledata_env_GITHUB_TOKEN', token); // Para APP_CONFIG
+              localStorage.setItem('simpledata_github_pat', token);       // Para RepositoryManager (Legacy Fallback)
+          } else {
+              localStorage.removeItem('simpledata_env_GITHUB_TOKEN');
+              localStorage.removeItem('simpledata_github_pat');
+          }
+          
+          // 3. Feedback y Recarga
+          alert("✅ Configuración guardada exitosamente.\n\nEl sistema se reiniciará ahora para aplicar los cambios.");
           window.location.reload();
+      } catch (e) {
+          console.error(e);
+          alert("Error al guardar en el almacenamiento local del navegador.");
       }
   };
 
