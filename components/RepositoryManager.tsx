@@ -49,6 +49,14 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [creationStatus, setCreationStatus] = useState<'idle' | 'auth' | 'creating' | 'success' | 'error'>('idle');
   const [creationLog, setCreationLog] = useState('');
 
+  // --- NEW: FOLDER PICKER STATE ---
+  const [targetParent, setTargetParent] = useState<{id: string, name: string}>({ id: 'root', name: 'Mi Unidad (Raíz)' });
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [pickerItems, setPickerItems] = useState<any[]>([]);
+  const [pickerCurrentFolder, setPickerCurrentFolder] = useState<{id: string, name: string}>({ id: 'root', name: 'Mi Unidad' });
+  const [pickerBreadcrumb, setPickerBreadcrumb] = useState<{id: string, name: string}[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
   // Upload State
   const [uploadState, setUploadState] = useState<'idle' | 'selecting' | 'uploading' | 'success' | 'error'>('idle');
   const [uploadStatusMsg, setUploadStatusMsg] = useState('');
@@ -105,7 +113,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           try {
              const client = google.accounts.oauth2.initTokenClient({
                   client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
-                  scope: 'https://www.googleapis.com/auth/drive.file',
+                  scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
                   callback: (tokenResponse: any) => {
                       if (tokenResponse && tokenResponse.access_token) {
                           setDriveToken(tokenResponse.access_token);
@@ -122,13 +130,81 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       });
   };
 
+  // --- DRIVE FOLDER PICKER LOGIC ---
+  const fetchDriveFolders = async (parentId: string, token: string) => {
+      const query = `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=100&orderBy=name`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Error listando carpetas");
+      const data = await response.json();
+      return data.files || [];
+  };
+
+  const openPicker = async () => {
+      setIsPickerOpen(true);
+      setPickerLoading(true);
+      try {
+          const token = await authenticateDrive();
+          const rootFolders = await fetchDriveFolders('root', token);
+          setPickerItems(rootFolders);
+          setPickerCurrentFolder({ id: 'root', name: 'Mi Unidad' });
+          setPickerBreadcrumb([{ id: 'root', name: 'Mi Unidad' }]);
+      } catch (e) {
+          console.error(e);
+          alert("Error abriendo selector: " + e);
+          setIsPickerOpen(false);
+      } finally {
+          setPickerLoading(false);
+      }
+  };
+
+  const handleEnterFolder = async (folder: {id: string, name: string}) => {
+      setPickerLoading(true);
+      try {
+          const token = await authenticateDrive();
+          const items = await fetchDriveFolders(folder.id, token);
+          setPickerItems(items);
+          setPickerCurrentFolder(folder);
+          setPickerBreadcrumb([...pickerBreadcrumb, folder]);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setPickerLoading(false);
+      }
+  };
+
+  const handleNavigateUp = async (index: number) => {
+      const target = pickerBreadcrumb[index];
+      const newBreadcrumb = pickerBreadcrumb.slice(0, index + 1);
+      setPickerLoading(true);
+      try {
+          const token = await authenticateDrive();
+          const items = await fetchDriveFolders(target.id, token);
+          setPickerItems(items);
+          setPickerCurrentFolder(target);
+          setPickerBreadcrumb(newBreadcrumb);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setPickerLoading(false);
+      }
+  };
+
+  const confirmSelection = () => {
+      setTargetParent(pickerCurrentFolder);
+      setIsPickerOpen(false);
+  };
+
+
   // --- DRIVE FOLDER CREATION LOGIC ---
   const createDriveFolder = async (name: string, parentId: string | null, token: string) => {
       const metadata: any = {
           name: name,
           mimeType: 'application/vnd.google-apps.folder'
       };
-      if (parentId) {
+      // Use selected parent or 'root' if null
+      if (parentId && parentId !== 'root') {
           metadata.parents = [parentId];
       }
 
@@ -158,15 +234,14 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setCreationStatus('creating');
           
           // 1. Construct Root Name: [CORRELATIVO]_[NOMBRE]_[ENCARGADO]
-          // Sanitize strings to avoid illegal chars
           const safeName = project.name.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
           const safeManager = (project.encargadoCliente || 'SinAsignar').replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
           const rootFolderName = `${correlative}_${safeName}_${safeManager}`;
 
           setCreationLog(`Creando carpeta raíz: ${rootFolderName}...`);
           
-          // 2. Create Root
-          const rootFolder = await createDriveFolder(rootFolderName, null, token);
+          // 2. Create Root in the selected Target Parent
+          const rootFolder = await createDriveFolder(rootFolderName, targetParent.id, token);
           
           // 3. Create Subfolders
           let createdCount = 0;
@@ -195,7 +270,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             id: `log_${Date.now()}`,
             date: new Date().toISOString(),
             author: currentUser.name,
-            text: `✅ ESTRUCTURA DRIVE CREADA: ${rootFolderName} con ${FOLDER_STRUCTURE.length} subcarpetas.`,
+            text: `✅ ESTRUCTURA DRIVE CREADA: ${rootFolderName} en ${targetParent.name}`,
             link: rootFolder.webViewLink
           };
           onUpdateProject({ ...project, repositories: updatedRepositories, logs: [...(project.logs || []), newLog] });
@@ -211,7 +286,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setCreationLog('Error: ' + e.message);
       }
   };
-
 
   // --- UPLOAD LOGIC ---
   const handleTriggerUpload = async (repoId: string) => {
@@ -246,16 +320,12 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
           setSelectedFile(file);
-          
           const repo = project.repositories?.find(r => r.id === selectedRepoId);
           if (!repo) return;
-
           setUploadState('uploading');
-
           if (activeTab === 'github') {
              await uploadToGitHubReal(file, repo);
           } else {
-             // Use the state token
              await uploadToDriveReal(file, repo, driveToken);
           }
       }
@@ -266,57 +336,41 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const uploadToDriveReal = async (file: File, repo: Repository, accessToken: string) => {
       setUploadStatusMsg('Iniciando carga segura...');
       setProgress(5);
-
       if (!accessToken) {
           setUploadState('error');
           setUploadStatusMsg('Sesión expirada. Por favor intente nuevamente.');
           return;
       }
-
-      // 1. Extract Folder ID
       let folderId = '';
       const folderMatch = repo.url.match(/(?:folders\/|id=)([\w-]+)/);
       if (folderMatch) {
           folderId = folderMatch[1];
       } else {
           setUploadState('error');
-          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL. Asegúrate que el link sea de una carpeta de Drive.');
+          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL.');
           return;
       }
-
-      // 2. Upload
       try {
           setUploadStatusMsg('Enviando datos a Google Drive...');
           setProgress(30);
-
-          const metadata = {
-              name: file.name,
-              parents: [folderId]
-          };
-
+          const metadata = { name: file.name, parents: [folderId] };
           const form = new FormData();
           form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
           form.append('file', file);
 
           const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
               method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${accessToken}`
-              },
+              headers: { 'Authorization': `Bearer ${accessToken}` },
               body: form
           });
-
           setProgress(80);
-
           if (!response.ok) {
               const err = await response.json();
               throw new Error(err.error?.message || "Error al subir a Drive");
           }
-
           const data = await response.json();
           setProgress(100);
           completeUpload(file, repo, data.webViewLink);
-
       } catch (e: any) {
           console.error(e);
           setUploadState('error');
@@ -386,10 +440,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           text: `✅ ARCHIVO CARGADO: "${file.name}" a ${repo.alias} (${repo.type === 'github' ? 'GitHub API' : 'Google Drive'})`,
           link: finalUrl || repo.url
       };
-      onUpdateProject({ 
-          ...project, 
-          logs: [...(project.logs || []), newLog] 
-      });
+      onUpdateProject({ ...project, logs: [...(project.logs || []), newLog] });
       setUploadState('success');
       setUploadStatusMsg('¡Sincronización Completada!');
       setTimeout(() => {
@@ -441,6 +492,69 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 relative">
                 
+                {/* PICKER OVERLAY */}
+                {isPickerOpen && (
+                    <div className="absolute inset-0 bg-white z-50 flex flex-col p-4 animate-fade-in">
+                        <div className="flex justify-between items-center mb-4 border-b pb-2">
+                             <div>
+                                 <h3 className="font-bold text-slate-800">Seleccionar Carpeta Raíz</h3>
+                                 <p className="text-xs text-slate-500">Navega y selecciona dónde se creará el proyecto.</p>
+                             </div>
+                             <button onClick={() => setIsPickerOpen(false)} className="text-slate-400 hover:text-slate-600"><Icon name="fa-times" /></button>
+                        </div>
+                        
+                        {/* Breadcrumbs */}
+                        <div className="flex gap-1 text-xs mb-3 overflow-x-auto whitespace-nowrap pb-2">
+                            {pickerBreadcrumb.map((crumb, idx) => (
+                                <div key={crumb.id} className="flex items-center">
+                                    <button 
+                                        onClick={() => handleNavigateUp(idx)}
+                                        className={`hover:underline ${idx === pickerBreadcrumb.length - 1 ? 'font-bold text-slate-800' : 'text-blue-600'}`}
+                                    >
+                                        {crumb.name}
+                                    </button>
+                                    {idx < pickerBreadcrumb.length - 1 && <Icon name="fa-chevron-right" className="mx-1 text-slate-300 text-[8px]" />}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* List */}
+                        <div className="flex-1 overflow-y-auto bg-slate-50 rounded-lg border border-slate-200 p-2 space-y-1">
+                             {pickerLoading ? (
+                                 <div className="flex items-center justify-center h-full text-slate-400 gap-2">
+                                     <Icon name="fa-circle-notch" className="animate-spin" /> Cargando Drive...
+                                 </div>
+                             ) : pickerItems.length === 0 ? (
+                                 <div className="flex items-center justify-center h-full text-slate-400 text-sm">Carpeta vacía</div>
+                             ) : (
+                                 pickerItems.map(item => (
+                                     <div key={item.id} className="flex items-center justify-between p-2 hover:bg-white hover:shadow-sm rounded cursor-pointer group" onClick={() => handleEnterFolder(item)}>
+                                          <div className="flex items-center gap-3">
+                                              <Icon name="fa-folder" className="text-yellow-400 text-lg" />
+                                              <span className="text-sm text-slate-700 font-medium truncate max-w-[200px]">{item.name}</span>
+                                          </div>
+                                          <Icon name="fa-chevron-right" className="text-slate-300 text-xs group-hover:text-slate-500" />
+                                     </div>
+                                 ))
+                             )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="mt-4 flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <div className="text-xs text-blue-800">
+                                Selección actual:<br/>
+                                <strong className="text-sm">{pickerCurrentFolder.name}</strong>
+                            </div>
+                            <button 
+                                onClick={confirmSelection}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700 transition-all"
+                            >
+                                <Icon name="fa-check" /> Seleccionar Esta
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* UPLOAD OVERLAY: PROGRESS */}
                 {uploadState === 'uploading' && (
                     <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
@@ -553,7 +667,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 )}
 
                 {/* VIEW MODE: ADD */}
-                {viewMode === 'add' && (
+                {viewMode === 'add' && !isPickerOpen && (
                     <div className="space-y-6 animate-slide-up">
                         <div className="flex justify-between items-center">
                             <h3 className="font-bold text-lg text-slate-800">Nuevo Enlace</h3>
@@ -571,9 +685,23 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                         <div>
                                             <h4 className="font-bold text-green-900">Generador de Estructura Automática</h4>
                                             <p className="text-sm text-green-700/80 mt-1">
-                                                Crea una carpeta raíz con la nomenclatura estándar y genera automáticamente las 8 subcarpetas (01_Documentacion, 02_Proceso, etc.).
+                                                Crea la estructura estándar de 8 carpetas.
                                             </p>
                                         </div>
+                                    </div>
+                                    
+                                    {/* TARGET FOLDER SELECTOR */}
+                                    <div className="mb-4 bg-white/60 p-2 rounded border border-green-100 flex items-center justify-between">
+                                        <div className="text-xs text-green-800">
+                                            <span className="font-bold uppercase opacity-60">Crear en:</span><br/>
+                                            <span className="font-bold flex items-center gap-1"><Icon name="fa-folder-open" /> {targetParent.name}</span>
+                                        </div>
+                                        <button 
+                                            onClick={openPicker}
+                                            className="text-[10px] bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded font-bold transition-colors"
+                                        >
+                                            Cambiar
+                                        </button>
                                     </div>
 
                                     {creationStatus === 'idle' ? (
