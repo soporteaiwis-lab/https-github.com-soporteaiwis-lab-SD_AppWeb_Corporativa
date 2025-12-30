@@ -148,7 +148,17 @@ export const AdminUsersView = ({
                                       {user.projects.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">Sin asignaciones</div>}
                                       {user.projects.map(pid => {
                                           const proj = projects.find(p => p.id === pid);
-                                          if (!proj) return null;
+                                          
+                                          // Handle case where project is in user list but not in projects database
+                                          if (!proj) {
+                                              return (
+                                                  <div key={pid} className="w-full text-left p-3 text-xs border-b border-slate-50 bg-red-50 text-red-500 flex items-center gap-2">
+                                                      <Icon name="fa-exclamation-triangle" />
+                                                      <span>Proyecto ID: {pid} (No encontrado)</span>
+                                                  </div>
+                                              );
+                                          }
+                                          
                                           const isActive = proj.status === 'En Curso';
                                           return (
                                               <button 
