@@ -39,7 +39,10 @@ export const APP_CONFIG = {
   GEMINI_API_KEY: getEnvVar('API_KEY'), 
   
   // Busca: GITHUB_TOKEN, REACT_APP_GITHUB_TOKEN, VITE_GITHUB_TOKEN o localStorage
-  GITHUB_TOKEN: getEnvVar('GITHUB_TOKEN') 
+  GITHUB_TOKEN: getEnvVar('GITHUB_TOKEN'),
+
+  // Busca: GOOGLE_CLIENT_ID para Drive Uploads
+  GOOGLE_CLIENT_ID: getEnvVar('GOOGLE_CLIENT_ID')
 };
 
 // Real SimpleData Team

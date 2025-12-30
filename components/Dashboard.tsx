@@ -12,12 +12,14 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
   // Check System Status
   const isGeminiReady = !!APP_CONFIG.GEMINI_API_KEY && APP_CONFIG.GEMINI_API_KEY.length > 5;
   const isGithubReady = !!APP_CONFIG.GITHUB_TOKEN && APP_CONFIG.GITHUB_TOKEN.length > 5;
+  const isDriveReady = !!APP_CONFIG.GOOGLE_CLIENT_ID && APP_CONFIG.GOOGLE_CLIENT_ID.length > 5;
 
   // Settings Modal State
   const [showConfig, setShowConfig] = useState(false);
   const [manualKeys, setManualKeys] = useState({
       apiKey: localStorage.getItem('simpledata_env_API_KEY') || '',
-      githubToken: localStorage.getItem('simpledata_env_GITHUB_TOKEN') || ''
+      githubToken: localStorage.getItem('simpledata_env_GITHUB_TOKEN') || '',
+      googleClientId: localStorage.getItem('simpledata_env_GOOGLE_CLIENT_ID') || ''
   });
 
   const handleSaveKeys = () => {
@@ -38,8 +40,15 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
               localStorage.removeItem('simpledata_env_GITHUB_TOKEN');
               localStorage.removeItem('simpledata_github_pat');
           }
+
+          // 3. Guardar Google Client ID (Para Drive OAuth)
+          if (manualKeys.googleClientId && manualKeys.googleClientId.trim() !== '') {
+            localStorage.setItem('simpledata_env_GOOGLE_CLIENT_ID', manualKeys.googleClientId.trim());
+          } else {
+            localStorage.removeItem('simpledata_env_GOOGLE_CLIENT_ID');
+          }
           
-          // 3. Feedback y Recarga
+          // 4. Feedback y Recarga
           alert("✅ Configuración guardada exitosamente.\n\nEl sistema se reiniciará ahora para aplicar los cambios.");
           window.location.reload();
       } catch (e) {
@@ -66,6 +75,11 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                 <div className="flex items-center gap-2" title={isGithubReady ? "GitHub API: Token Configurado" : "GitHub API: Manual"}>
                     <div className={`w-2.5 h-2.5 rounded-full ${isGithubReady ? 'bg-green-500' : 'bg-orange-400'}`}></div>
                     <span className="text-xs font-bold text-slate-600">Git</span>
+                </div>
+                <div className="w-[1px] h-4 bg-slate-200"></div>
+                <div className="flex items-center gap-2" title={isDriveReady ? "Google Drive: Client ID Configurado" : "Google Drive: Sin Client ID"}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${isDriveReady ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                    <span className="text-xs font-bold text-slate-600">Drive</span>
                 </div>
                 <div className="w-[1px] h-4 bg-slate-200"></div>
                 <button onClick={() => setShowConfig(true)} className="text-slate-400 hover:text-simple-600 transition-colors" title="Configuración Manual de Llaves">
@@ -147,7 +161,7 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                       <h3 className="font-bold flex items-center gap-2"><Icon name="fa-cogs" /> Configuración de Sistema</h3>
                       <button onClick={() => setShowConfig(false)} className="hover:text-red-400"><Icon name="fa-times" /></button>
                   </div>
-                  <div className="p-6 space-y-4">
+                  <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
                       <p className="text-sm text-slate-500 bg-blue-50 p-3 rounded-lg border border-blue-100">
                           <Icon name="fa-info-circle" /> Si tu archivo <code>.env</code> no se carga, ingresa tus llaves aquí. Se guardarán localmente en tu navegador.
                       </p>
@@ -171,6 +185,20 @@ export const Dashboard = ({ currentUser, projects }: { currentUser: User, projec
                               placeholder="ghp_..." 
                               value={manualKeys.githubToken}
                               onChange={e => setManualKeys({...manualKeys, githubToken: e.target.value})}
+                          />
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-2">
+                           <Icon name="fab fa-google-drive" /> Google OAuth Client ID (Para Drive Uploads)
+                        </label>
+                        <p className="text-[10px] text-slate-400 mb-2">Requerido para subir archivos directo a Drive. Créalo en Google Cloud Console.</p>
+                        <input 
+                              type="text" 
+                              className="w-full border p-3 rounded-lg font-mono text-sm bg-slate-50 focus:bg-white transition-colors outline-none focus:ring-2 focus:ring-simple-500" 
+                              placeholder="xxxxxxxx-xxxxxxxx.apps.googleusercontent.com" 
+                              value={manualKeys.googleClientId}
+                              onChange={e => setManualKeys({...manualKeys, googleClientId: e.target.value})}
                           />
                       </div>
 

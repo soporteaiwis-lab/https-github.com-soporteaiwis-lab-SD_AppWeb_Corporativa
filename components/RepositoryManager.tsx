@@ -6,6 +6,8 @@ const Icon = ({ name, className = "" }: { name: string, className?: string }) =>
   <i className={`fa-solid ${name} ${className}`}></i>
 );
 
+declare var google: any; // Declare google global for GIS
+
 interface RepositoryManagerProps {
   project: Project;
   initialType: 'github' | 'drive';
@@ -18,10 +20,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [activeTab, setActiveTab] = useState<'github' | 'drive'>(initialType);
   const [viewMode, setViewMode] = useState<'list' | 'add'>('list');
   
-  // GitHub Token Logic: Check ENV first, then LocalStorage
+  // GitHub Token Logic
   const envToken = APP_CONFIG.GITHUB_TOKEN;
   const isEnvConfigured = !!envToken && envToken.length > 5;
-
   const [githubToken, setGithubToken] = useState(envToken || localStorage.getItem('simpledata_github_pat') || '');
   const [showTokenInput, setShowTokenInput] = useState(false);
 
@@ -35,7 +36,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
 
+  // References
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const driveTokenRef = useRef<string>(''); // Store Drive Token temporarily
   const repositories = project.repositories?.filter(r => r.type === activeTab) || [];
 
   // If using manual token (not env), save to local storage
@@ -68,33 +71,134 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   };
 
   const handleTriggerUpload = (repoId: string) => {
-      if (activeTab === 'github' && !githubToken) {
-          alert("⚠️ Para subir archivos directo a GitHub, necesitas configurar tu Token de Acceso (PAT) primero.");
-          setShowTokenInput(true);
+      // 1. GITHUB FLOW
+      if (activeTab === 'github') {
+          if (!githubToken) {
+              alert("⚠️ Para subir archivos directo a GitHub, necesitas configurar tu Token de Acceso (PAT) primero.");
+              setShowTokenInput(true);
+              return;
+          }
+          setSelectedRepoId(repoId);
+          if (fileInputRef.current) fileInputRef.current.click();
           return;
       }
-      setSelectedRepoId(repoId);
-      if (fileInputRef.current) fileInputRef.current.click();
+
+      // 2. GOOGLE DRIVE FLOW (Auth First)
+      if (activeTab === 'drive') {
+          if (!APP_CONFIG.GOOGLE_CLIENT_ID) {
+              alert("⚠️ Faltante: GOOGLE_CLIENT_ID.\n\nPara subir directo a Drive, el administrador debe configurar un Client ID de Google OAuth en el Dashboard (Icono engranaje).");
+              return;
+          }
+          
+          if (typeof google === 'undefined' || !google.accounts) {
+             alert("Error: Librería Google Identity Services no cargada. Por favor recarga la página o revisa tu conexión.");
+             return;
+          }
+
+          setSelectedRepoId(repoId);
+
+          // Trigger OAuth Popup IMMEDIATELY on click to avoid browser blocking
+          try {
+             const client = google.accounts.oauth2.initTokenClient({
+                  client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
+                  scope: 'https://www.googleapis.com/auth/drive.file',
+                  callback: (tokenResponse: any) => {
+                      if (tokenResponse && tokenResponse.access_token) {
+                          // Save token
+                          driveTokenRef.current = tokenResponse.access_token;
+                          // Now open file selector
+                          if (fileInputRef.current) fileInputRef.current.click();
+                      } else {
+                          console.error("No access token received from Google");
+                      }
+                  },
+              });
+              client.requestAccessToken();
+          } catch (e) {
+              console.error(e);
+              alert("Error iniciando Google Auth: " + e);
+          }
+      }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
           setSelectedFile(file);
-          setUploadState('uploading');
-          setUploadStatusMsg('Preparando archivo...');
           
           const repo = project.repositories?.find(r => r.id === selectedRepoId);
           if (!repo) return;
 
-          // --- LOGIC SPLIT: REAL GITHUB API vs DRIVE LINK ---
+          setUploadState('uploading');
+
           if (activeTab === 'github') {
              await uploadToGitHubReal(file, repo);
           } else {
-             // Drive Logic (Link Opener)
-             window.open(repo.url, '_blank');
-             simulateDriveUpload(file);
+             // Pass the token we got in the previous step
+             await uploadToDriveReal(file, repo, driveTokenRef.current);
           }
+      }
+      // Reset input to allow selecting same file again
+      if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // --- REAL GOOGLE DRIVE API UPLOAD (Using passed Token) ---
+  const uploadToDriveReal = async (file: File, repo: Repository, accessToken: string) => {
+      setUploadStatusMsg('Procesando subida segura...');
+      setProgress(10);
+
+      if (!accessToken) {
+          setUploadState('error');
+          setUploadStatusMsg('Error de sesión: No se detectó el Token de Google. Intente nuevamente.');
+          return;
+      }
+
+      // 1. Extract Folder ID from URL
+      let folderId = '';
+      const folderMatch = repo.url.match(/(?:folders\/|id=)([\w-]+)/);
+      if (folderMatch) {
+          folderId = folderMatch[1];
+      } else {
+          setUploadState('error');
+          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL proporcionada.');
+          return;
+      }
+
+      // 2. Upload
+      try {
+          setUploadStatusMsg('Subiendo archivo a Drive...');
+          setProgress(40);
+
+          const metadata = {
+              name: file.name,
+              parents: [folderId]
+          };
+
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', file);
+
+          const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${accessToken}`
+              },
+              body: form
+          });
+
+          if (!response.ok) {
+              const err = await response.json();
+              throw new Error(err.error?.message || "Error al subir a Drive");
+          }
+
+          const data = await response.json();
+          setProgress(100);
+          completeUpload(file, repo, data.webViewLink);
+
+      } catch (e: any) {
+          console.error(e);
+          setUploadState('error');
+          setUploadStatusMsg('Fallo en la subida: ' + e.message);
       }
   };
 
@@ -164,25 +268,12 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       }
   };
 
-  const simulateDriveUpload = (file: File) => {
-      let pct = 0;
-      const interval = setInterval(() => {
-          pct += 10;
-          if (pct > 100) {
-              pct = 100;
-              clearInterval(interval);
-              completeUpload(file, project.repositories.find(r => r.id === selectedRepoId)!);
-          }
-          setProgress(pct);
-      }, 200);
-  };
-
   const completeUpload = (file: File, repo: Repository, finalUrl?: string) => {
       const newLog: ProjectLog = {
           id: `log_${Date.now()}`,
           date: new Date().toISOString(),
           author: currentUser.name,
-          text: `✅ ARCHIVO SUBIDO: "${file.name}" a ${repo.alias} (GitHub Direct)`,
+          text: `✅ ARCHIVO CARGADO: "${file.name}" a ${repo.alias} (${repo.type === 'github' ? 'GitHub API' : 'Google Drive'})`,
           link: finalUrl || repo.url
       };
       onUpdateProject({ 
@@ -241,7 +332,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             {/* Content Area */}
             <div className="flex-1 overflow-y-auto p-6 bg-slate-50 relative">
                 
-                {/* UPLOAD OVERLAY */}
+                {/* UPLOAD OVERLAY: PROGRESS */}
                 {uploadState === 'uploading' && (
                     <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
                         <div className="w-20 h-20 mb-6 relative mx-auto">
@@ -304,9 +395,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                         />
                                         <p className="mt-1 text-slate-500">Se guardará localmente en tu navegador.</p>
                                     </div>
-                                )}
-                                {isEnvConfigured && (
-                                    <p className="mt-2 text-slate-500 italic">El token ha sido configurado globalmente por el administrador del sistema.</p>
                                 )}
                             </div>
                         )}
@@ -410,7 +498,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
             {/* Footer Tip */}
             {viewMode === 'list' && (
                 <div className="p-4 bg-slate-100 text-center text-xs text-slate-500 border-t border-slate-200">
-                    <Icon name="fa-info-circle" /> {activeTab === 'github' ? 'Usa tu Token para subir archivos directo.' : 'Gestiona carpetas de Drive.'}
+                    <Icon name="fa-info-circle" /> {activeTab === 'github' ? 'API Directa (Con Token)' : 'OAuth 2.0 Secure Upload'}
                 </div>
             )}
         </div>
