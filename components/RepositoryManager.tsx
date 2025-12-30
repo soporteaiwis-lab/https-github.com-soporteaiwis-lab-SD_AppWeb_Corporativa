@@ -8,6 +8,18 @@ const Icon = ({ name, className = "" }: { name: string, className?: string }) =>
 
 declare var google: any; // Declare google global for GIS
 
+// Predefined Folder Structure
+const FOLDER_STRUCTURE = [
+  "01_Documentacion",
+  "02_Proceso",
+  "03_Cuadratura",
+  "04_QA",
+  "05_Entrega_Interna",
+  "06_Entrega",
+  "07_PostEntrega",
+  "10_Revision_Archivos"
+];
+
 interface RepositoryManagerProps {
   project: Project;
   initialType: 'github' | 'drive';
@@ -26,11 +38,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [githubToken, setGithubToken] = useState(envToken || localStorage.getItem('simpledata_github_pat') || '');
   const [showTokenInput, setShowTokenInput] = useState(false);
 
-  // Drive Token State (New: To manage UI state after auth)
+  // Drive Token State
   const [driveToken, setDriveToken] = useState<string>('');
 
-  // Add New Repo State
+  // Add New Repo State (Manual)
   const [newRepo, setNewRepo] = useState({ alias: '', url: '' });
+
+  // Drive Structure Generator State
+  const [correlative, setCorrelative] = useState(project.id.replace(/\D/g, '') || '001');
+  const [creationStatus, setCreationStatus] = useState<'idle' | 'auth' | 'creating' | 'success' | 'error'>('idle');
+  const [creationLog, setCreationLog] = useState('');
 
   // Upload State
   const [uploadState, setUploadState] = useState<'idle' | 'selecting' | 'uploading' | 'success' | 'error'>('idle');
@@ -49,6 +66,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           localStorage.setItem('simpledata_github_pat', githubToken);
       }
   }, [githubToken, isEnvConfigured]);
+
+  // --- ACTIONS ---
 
   const handleAddRepo = () => {
       if (!newRepo.alias || !newRepo.url) return;
@@ -72,7 +91,130 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       onUpdateProject({ ...project, repositories: updatedRepositories });
   };
 
-  const handleTriggerUpload = (repoId: string) => {
+  // --- DRIVE AUTH HELPER ---
+  const authenticateDrive = (): Promise<string> => {
+      return new Promise((resolve, reject) => {
+          if (driveToken) {
+              resolve(driveToken);
+              return;
+          }
+          if (!APP_CONFIG.GOOGLE_CLIENT_ID) {
+            reject("Falta GOOGLE_CLIENT_ID en configuración.");
+            return;
+          }
+          try {
+             const client = google.accounts.oauth2.initTokenClient({
+                  client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
+                  scope: 'https://www.googleapis.com/auth/drive.file',
+                  callback: (tokenResponse: any) => {
+                      if (tokenResponse && tokenResponse.access_token) {
+                          setDriveToken(tokenResponse.access_token);
+                          resolve(tokenResponse.access_token);
+                      } else {
+                          reject("No se obtuvo token de Google.");
+                      }
+                  },
+              });
+              client.requestAccessToken();
+          } catch (e) {
+              reject(e);
+          }
+      });
+  };
+
+  // --- DRIVE FOLDER CREATION LOGIC ---
+  const createDriveFolder = async (name: string, parentId: string | null, token: string) => {
+      const metadata: any = {
+          name: name,
+          mimeType: 'application/vnd.google-apps.folder'
+      };
+      if (parentId) {
+          metadata.parents = [parentId];
+      }
+
+      const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,webViewLink', {
+          method: 'POST',
+          headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(metadata)
+      });
+
+      if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error?.message || "Error creando carpeta");
+      }
+      return await response.json(); // returns { id, webViewLink }
+  };
+
+  const handleCreateStructure = async () => {
+      setCreationStatus('auth');
+      setCreationLog('Autenticando...');
+      
+      try {
+          const token = await authenticateDrive();
+          
+          setCreationStatus('creating');
+          
+          // 1. Construct Root Name: [CORRELATIVO]_[NOMBRE]_[ENCARGADO]
+          // Sanitize strings to avoid illegal chars
+          const safeName = project.name.replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
+          const safeManager = (project.encargadoCliente || 'SinAsignar').replace(/[^a-zA-Z0-9 ]/g, "").trim().replace(/\s+/g, "");
+          const rootFolderName = `${correlative}_${safeName}_${safeManager}`;
+
+          setCreationLog(`Creando carpeta raíz: ${rootFolderName}...`);
+          
+          // 2. Create Root
+          const rootFolder = await createDriveFolder(rootFolderName, null, token);
+          
+          // 3. Create Subfolders
+          let createdCount = 0;
+          for (const subName of FOLDER_STRUCTURE) {
+              setCreationLog(`Creando subcarpeta (${createdCount + 1}/${FOLDER_STRUCTURE.length}): ${subName}...`);
+              await createDriveFolder(subName, rootFolder.id, token);
+              createdCount++;
+          }
+
+          setCreationLog('¡Estructura creada exitosamente!');
+          setCreationStatus('success');
+
+          // 4. Link to Project
+          const newRepoLink: Repository = {
+              id: `r_${Date.now()}`,
+              type: 'drive',
+              alias: `🗂️ ${rootFolderName}`,
+              url: rootFolder.webViewLink
+          };
+
+          const updatedRepositories = [...(project.repositories || []), newRepoLink];
+          onUpdateProject({ ...project, repositories: updatedRepositories });
+
+          // 5. Add Log
+          const newLog: ProjectLog = {
+            id: `log_${Date.now()}`,
+            date: new Date().toISOString(),
+            author: currentUser.name,
+            text: `✅ ESTRUCTURA DRIVE CREADA: ${rootFolderName} con ${FOLDER_STRUCTURE.length} subcarpetas.`,
+            link: rootFolder.webViewLink
+          };
+          onUpdateProject({ ...project, repositories: updatedRepositories, logs: [...(project.logs || []), newLog] });
+
+          setTimeout(() => {
+              setViewMode('list');
+              setCreationStatus('idle');
+          }, 2000);
+
+      } catch (e: any) {
+          console.error(e);
+          setCreationStatus('error');
+          setCreationLog('Error: ' + e.message);
+      }
+  };
+
+
+  // --- UPLOAD LOGIC ---
+  const handleTriggerUpload = async (repoId: string) => {
       setSelectedRepoId(repoId);
 
       // 1. GITHUB FLOW
@@ -88,47 +230,14 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
       // 2. GOOGLE DRIVE FLOW
       if (activeTab === 'drive') {
-          // If we already have a token from this session, skip Auth and go straight to file select
-          if (driveToken) {
-              if (fileInputRef.current) fileInputRef.current.click();
-              return;
-          }
-
-          if (!APP_CONFIG.GOOGLE_CLIENT_ID) {
-              alert("⚠️ Faltante: GOOGLE_CLIENT_ID.\n\nPara subir directo a Drive, el administrador debe configurar un Client ID de Google OAuth en el Dashboard (Icono engranaje).");
-              return;
-          }
-          
-          if (typeof google === 'undefined' || !google.accounts) {
-             alert("Error: Librería Google Identity Services no cargada. Por favor recarga la página o revisa tu conexión.");
-             return;
-          }
-
-          // Trigger OAuth Popup
           try {
-             const client = google.accounts.oauth2.initTokenClient({
-                  client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
-                  scope: 'https://www.googleapis.com/auth/drive.file',
-                  callback: (tokenResponse: any) => {
-                      if (tokenResponse && tokenResponse.access_token) {
-                          // 1. Save Token to State (Updates UI)
-                          setDriveToken(tokenResponse.access_token);
-                          
-                          // 2. Try to auto-open file selector
-                          // Note: Some browsers block this inside async callbacks. 
-                          // If blocked, the user will see the button change to "Seleccionar Archivo" and can click again.
-                          setTimeout(() => {
-                              if (fileInputRef.current) fileInputRef.current.click();
-                          }, 100);
-                      } else {
-                          console.error("No access token received from Google");
-                      }
-                  },
-              });
-              client.requestAccessToken();
-          } catch (e) {
-              console.error(e);
-              alert("Error iniciando Google Auth: " + e);
+              const token = await authenticateDrive();
+              // Try auto-open, fallback to user click if blocked
+               setTimeout(() => {
+                  if (fileInputRef.current) fileInputRef.current.click();
+              }, 100);
+          } catch (e: any) {
+              alert("Error Auth Drive: " + e);
           }
       }
   };
@@ -150,7 +259,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
              await uploadToDriveReal(file, repo, driveToken);
           }
       }
-      // Reset input to allow selecting same file again
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -190,7 +298,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
           form.append('file', file);
 
-          // Use XMLHttpRequest for better progress tracking if needed, but fetch is simpler for now
           const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
               method: 'POST',
               headers: {
@@ -222,16 +329,11 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
       try {
           setUploadStatusMsg('Conectando con GitHub API...');
           setProgress(10);
-
-          // 1. Parse Repo URL
           const cleanUrl = repo.url.replace(/\/$/, "").replace(/\.git$/, "");
           const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-          
           if (!match) throw new Error("URL de repositorio inválida.");
           const owner = match[1];
           const repoName = match[2];
-
-          // 2. Read File as Base64
           setUploadStatusMsg('Procesando archivo...');
           const base64Content = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
@@ -244,11 +346,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               reader.onerror = error => reject(error);
           });
           setProgress(40);
-
-          // 3. API PUT Request
           setUploadStatusMsg(`Subiendo a ${owner}/${repoName}...`);
           const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; 
-          
           const response = await fetch(apiUrl, {
               method: 'PUT',
               headers: {
@@ -261,16 +360,13 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                   content: base64Content
               })
           });
-
           setProgress(80);
-
           if (!response.ok) {
               const errorData = await response.json();
               if (response.status === 422) throw new Error("El archivo ya existe.");
               if (response.status === 401) throw new Error("Token inválido.");
               throw new Error(errorData.message || "Error desconocido.");
           }
-
           const data = await response.json();
           setProgress(100);
           completeUpload(file, repo, data.content?.html_url || repo.url);
@@ -294,7 +390,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           ...project, 
           logs: [...(project.logs || []), newLog] 
       });
-      
       setUploadState('success');
       setUploadStatusMsg('¡Sincronización Completada!');
       setTimeout(() => {
@@ -362,14 +457,14 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 )}
 
                 {/* ERROR OVERLAY */}
-                {uploadState === 'error' && (
+                {(uploadState === 'error' || creationStatus === 'error') && (
                     <div className="absolute inset-0 bg-white z-20 flex flex-col items-center justify-center p-8 animate-fade-in text-center">
                         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-600 text-4xl mx-auto">
                             <Icon name="fa-exclamation-triangle" />
                         </div>
-                        <h3 className="text-xl font-bold text-slate-900 mb-2">Error de Sincronización</h3>
-                        <p className="text-red-500 font-medium mb-6 bg-red-50 p-3 rounded border border-red-100">{uploadStatusMsg}</p>
-                        <button onClick={() => setUploadState('idle')} className="px-6 py-2 bg-slate-800 text-white rounded-lg">Intentar de nuevo</button>
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Error</h3>
+                        <p className="text-red-500 font-medium mb-6 bg-red-50 p-3 rounded border border-red-100">{uploadStatusMsg || creationLog}</p>
+                        <button onClick={() => { setUploadState('idle'); setCreationStatus('idle'); }} className="px-6 py-2 bg-slate-800 text-white rounded-lg">Volver</button>
                     </div>
                 )}
 
@@ -387,10 +482,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 {/* VIEW MODE: LIST */}
                 {viewMode === 'list' && (
                     <div className="space-y-4">
-                        {/* Status Bar for Drive */}
                         {activeTab === 'drive' && driveToken && (
                             <div className="bg-green-50 text-green-700 p-3 rounded-lg flex items-center gap-2 text-xs font-bold border border-green-200 animate-fade-in mb-4">
-                                <Icon name="fa-check-circle" /> Sesión de Google Drive Activa. Listo para subir archivos.
+                                <Icon name="fa-check-circle" /> Sesión Activa
                             </div>
                         )}
 
@@ -460,50 +554,99 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
                 {/* VIEW MODE: ADD */}
                 {viewMode === 'add' && (
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm animate-slide-up">
-                        <div className="flex justify-between items-center mb-6">
+                    <div className="space-y-6 animate-slide-up">
+                        <div className="flex justify-between items-center">
                             <h3 className="font-bold text-lg text-slate-800">Nuevo Enlace</h3>
                             <button onClick={() => setViewMode('list')} className="text-slate-400 hover:text-slate-600 text-sm">Cancelar</button>
                         </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre / Alias</label>
-                                <input 
-                                    className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                                    placeholder={activeTab === 'drive' ? 'Ej. Carpeta Facturas 2025' : 'Ej. Backend API Repo'} 
-                                    value={newRepo.alias}
-                                    onChange={e => setNewRepo({...newRepo, alias: e.target.value})}
-                                />
+
+                        {/* OPTION 1: AUTOMATIC STRUCTURE (DRIVE ONLY) */}
+                        {activeTab === 'drive' && (
+                            <div className="bg-gradient-to-br from-green-50 to-white p-6 rounded-xl border border-green-200 shadow-sm relative overflow-hidden">
+                                <div className="relative z-10">
+                                    <div className="flex items-start gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 text-xl shrink-0">
+                                            <Icon name="fa-magic" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-green-900">Generador de Estructura Automática</h4>
+                                            <p className="text-sm text-green-700/80 mt-1">
+                                                Crea una carpeta raíz con la nomenclatura estándar y genera automáticamente las 8 subcarpetas (01_Documentacion, 02_Proceso, etc.).
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {creationStatus === 'idle' ? (
+                                        <div className="flex items-end gap-3">
+                                             <div className="flex-1">
+                                                <label className="block text-[10px] font-bold text-green-800 uppercase mb-1">Correlativo</label>
+                                                <input 
+                                                    value={correlative} 
+                                                    onChange={e => setCorrelative(e.target.value)}
+                                                    className="w-full border border-green-300 rounded p-2 text-sm text-center font-mono font-bold"
+                                                    placeholder="000"
+                                                />
+                                             </div>
+                                             <div className="flex-[3]">
+                                                <label className="block text-[10px] font-bold text-green-800 uppercase mb-1">Nombre Previsto</label>
+                                                <div className="w-full bg-white/50 border border-green-200 rounded p-2 text-sm text-green-900 font-mono truncate">
+                                                    {correlative}_{project.name.replace(/\s+/g, "")}_{project.encargadoCliente?.replace(/\s+/g, "") || 'Manager'}
+                                                </div>
+                                             </div>
+                                             <button 
+                                                onClick={handleCreateStructure}
+                                                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow-lg transition-transform active:scale-95"
+                                             >
+                                                Generar
+                                             </button>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white/80 p-4 rounded border border-green-200 text-center">
+                                            {creationStatus === 'creating' && <Icon name="fa-circle-notch" className="animate-spin text-green-600 mr-2" />}
+                                            {creationStatus === 'success' && <Icon name="fa-check-circle" className="text-green-600 mr-2" />}
+                                            <span className="text-sm font-bold text-green-800">{creationLog}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">URL Exacta</label>
-                                <input 
-                                    className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" 
-                                    placeholder="https://..." 
-                                    value={newRepo.url}
-                                    onChange={e => setNewRepo({...newRepo, url: e.target.value})}
-                                />
-                            </div>
-                            <div className="pt-4">
-                                <button 
-                                    onClick={handleAddRepo}
-                                    disabled={!newRepo.alias || !newRepo.url}
-                                    className={`w-full py-3 bg-${themeColor}-600 hover:bg-${themeColor}-700 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg`}
-                                >
-                                    Guardar Enlace
-                                </button>
+                        )}
+
+                        {/* OPTION 2: MANUAL LINK */}
+                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                            <h4 className="font-bold text-slate-800 mb-4 border-b pb-2">O vincular manualmente</h4>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nombre / Alias</label>
+                                    <input 
+                                        className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                        placeholder={activeTab === 'drive' ? 'Ej. Carpeta Manual' : 'Ej. Backend API Repo'} 
+                                        value={newRepo.alias}
+                                        onChange={e => setNewRepo({...newRepo, alias: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">URL Exacta</label>
+                                    <input 
+                                        className="w-full border border-slate-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" 
+                                        placeholder="https://..." 
+                                        value={newRepo.url}
+                                        onChange={e => setNewRepo({...newRepo, url: e.target.value})}
+                                    />
+                                </div>
+                                <div className="pt-4">
+                                    <button 
+                                        onClick={handleAddRepo}
+                                        disabled={!newRepo.alias || !newRepo.url}
+                                        className={`w-full py-3 bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white font-bold rounded-lg shadow-lg`}
+                                    >
+                                        Guardar Enlace Manual
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 )}
             </div>
-            
-            {/* Footer Tip */}
-            {viewMode === 'list' && (
-                <div className="p-4 bg-slate-100 text-center text-xs text-slate-500 border-t border-slate-200">
-                    <Icon name="fa-info-circle" /> {activeTab === 'github' ? 'API Directa (Con Token)' : 'OAuth 2.0 Secure Upload'}
-                </div>
-            )}
         </div>
     </div>
   );
