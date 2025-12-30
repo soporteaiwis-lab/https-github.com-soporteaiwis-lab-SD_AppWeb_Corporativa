@@ -2,9 +2,10 @@ import { User, Project, Gem, ProjectLog } from '../types';
 import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS } from '../constants';
 
 // Local Storage Keys
-const USERS_KEY = 'simpledata_users_v5'; // Increment version to force update
-const PROJECTS_KEY = 'simpledata_projects_v5';
-const GEMS_KEY = 'simpledata_gems_v5';
+// BUMPED TO V6 to force Armin's new project data to load
+const USERS_KEY = 'simpledata_users_v6'; 
+const PROJECTS_KEY = 'simpledata_projects_v6';
+const GEMS_KEY = 'simpledata_gems_v6';
 
 // Helper to simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));

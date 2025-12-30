@@ -30,7 +30,8 @@ export const INITIAL_USERS: User[] = [
       { name: 'React & AI', level: 98 },
       { name: 'Scrum Master', level: 95 }
     ],
-    projects: ['PROYECTO_001', 'PROYECTO_002']
+    // UPDATED: Assigned all 4 projects
+    projects: ['PROYECTO_001', 'PROYECTO_002', 'PROYECTO_003', 'PROYECTO_004']
   },
   {
     id: 'u3',
@@ -139,7 +140,7 @@ export const INITIAL_PROJECTS: Project[] = [
     client: 'Interno SimpleData',
     encargadoCliente: 'Gerencia Admin',
     leadId: 'u2', // Armin
-    teamIds: ['u3', 'u8', 'u1'], // Gabriel, Alejandro, Gonzalo
+    teamIds: ['u3', 'u8', 'u1', 'u2'], // Added Armin explicitly to team
     status: 'En Curso',
     isOngoing: true,
     report: true,
@@ -162,7 +163,7 @@ export const INITIAL_PROJECTS: Project[] = [
     client: 'Cliente Retail XYZ',
     encargadoCliente: 'Gerente de Innovación',
     leadId: 'u2', // Armin
-    teamIds: ['u5', 'u7', 'u9'], // Anibal, Cristobal, Fernando
+    teamIds: ['u5', 'u7', 'u9', 'u2'], // Added Armin
     status: 'En Curso',
     isOngoing: true,
     report: true,
@@ -182,7 +183,7 @@ export const INITIAL_PROJECTS: Project[] = [
     client: 'Empresa Logística ABC',
     encargadoCliente: 'Jefe de IT',
     leadId: 'u4', // Francisco Valenzuela
-    teamIds: ['u8', 'u1'], // Alejandro, Gonzalo
+    teamIds: ['u8', 'u1', 'u2'], // Added Armin (u2)
     status: 'En Curso',
     isOngoing: true,
     report: true,
@@ -204,7 +205,7 @@ export const INITIAL_PROJECTS: Project[] = [
     client: 'Banco Financiero',
     encargadoCliente: 'CISO',
     leadId: 'u6', // Juan Escalona
-    teamIds: ['u1'], // Gonzalo
+    teamIds: ['u1', 'u2'], // Added Armin (u2)
     status: 'En Curso',
     isOngoing: true,
     report: true,
