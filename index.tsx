@@ -163,6 +163,7 @@ const App = () => {
                   onAddUser={handleAddUser} 
                   onUpdateUser={handleUpdateUser} 
                   onDeleteUser={handleDeleteUser} 
+                  onUpdateProject={handleUpdateProject}
               />
           )}
         </div>

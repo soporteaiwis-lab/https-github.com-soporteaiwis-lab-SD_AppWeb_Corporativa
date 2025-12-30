@@ -28,7 +28,7 @@ export const ProjectsView = ({
   const [showReqModal, setShowReqModal] = useState(false);
   
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [filters, setFilters] = useState({ name: '', client: '', jp: '', year: '', status: '' });
+  const [filters, setFilters] = useState({ name: '', client: '', status: 'En Curso' }); // Default 'En Curso'
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,8 +94,22 @@ export const ProjectsView = ({
   };
 
   const handleOpenEdit = (p: Project) => { setSelectedProject(p); setEditProjectData({ ...p }); setShowEditModal(true); };
-  const handleUpdate = () => { if (selectedProject && editProjectData) { onUpdateProject({ ...selectedProject, ...editProjectData }); setShowEditModal(false); } };
-  const toggleReport = (project: Project) => { onUpdateProject({ ...project, report: !project.report }); };
+  
+  const handleUpdate = () => { 
+      if (selectedProject && editProjectData) { 
+          // Auto-update status flag if status string changes
+          const updatedStatus = editProjectData.status || selectedProject.status;
+          const updatedData = {
+              ...selectedProject,
+              ...editProjectData,
+              isOngoing: updatedStatus === 'En Curso',
+              report: updatedStatus === 'En Curso'
+          };
+          onUpdateProject(updatedData); 
+          setShowEditModal(false); 
+      } 
+  };
+  
   const triggerUpload = (projectId: string, type: 'drive' | 'github') => { if (fileInputRef.current) { fileInputRef.current.setAttribute('data-pid', projectId); fileInputRef.current.setAttribute('data-type', type); fileInputRef.current.click(); } setActiveMenuId(null); };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const pid = e.target.getAttribute('data-pid'); const type = e.target.getAttribute('data-type') as 'drive' | 'github';
@@ -130,7 +144,8 @@ export const ProjectsView = ({
 
   const filteredProjects = projects.filter(p => {
     const matchName = p.name.toLowerCase().includes(filters.name.toLowerCase()) || p.id.toLowerCase().includes(filters.name.toLowerCase());
-    return matchName && p.client.toLowerCase().includes(filters.client.toLowerCase()) && (filters.status ? p.status === filters.status : true);
+    const matchStatus = filters.status === 'Todos' ? true : p.status === filters.status;
+    return matchName && p.client.toLowerCase().includes(filters.client.toLowerCase()) && matchStatus;
   });
 
   return (
@@ -138,11 +153,43 @@ export const ProjectsView = ({
        <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
        {pendingUpload && <UploadAssistantModal file={pendingUpload.file} project={projects.find(p => p.id === pendingUpload.projectId)!} type={pendingUpload.type} onClose={() => setPendingUpload(null)} onConfirm={handleConfirmUpload} />}
 
-       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-        <h2 className="text-2xl font-bold text-simple-900">Gestión de Proyectos</h2>
-        <button onClick={() => setShowCreateModal(true)} className="w-full lg:w-auto bg-simple-600 hover:bg-simple-700 text-white px-4 py-3 lg:py-2 rounded-lg text-sm font-medium transition-colors shadow-md flex items-center justify-center">
-          <Icon name="fa-plus" className="mr-2" /> Nuevo Proyecto
-        </button>
+       <div className="flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <h2 className="text-2xl font-bold text-simple-900">Gestión de Proyectos</h2>
+            <button onClick={() => setShowCreateModal(true)} className="w-full lg:w-auto bg-simple-600 hover:bg-simple-700 text-white px-4 py-3 lg:py-2 rounded-lg text-sm font-medium transition-colors shadow-md flex items-center justify-center">
+            <Icon name="fa-plus" className="mr-2" /> Nuevo Proyecto
+            </button>
+        </div>
+
+        {/* Filters Bar */}
+        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3">
+             <div className="flex-1 relative">
+                 <Icon name="fa-search" className="absolute left-3 top-3 text-slate-400 text-sm" />
+                 <input 
+                    className="w-full border pl-9 p-2 rounded-lg text-sm bg-slate-50 focus:bg-white transition-colors" 
+                    placeholder="Buscar por nombre..." 
+                    value={filters.name}
+                    onChange={e => setFilters({...filters, name: e.target.value})}
+                 />
+             </div>
+             <div className="flex gap-2">
+                 <input 
+                    className="flex-1 md:w-40 border p-2 rounded-lg text-sm bg-slate-50" 
+                    placeholder="Cliente..." 
+                    value={filters.client}
+                    onChange={e => setFilters({...filters, client: e.target.value})}
+                 />
+                 <select 
+                    className="flex-1 md:w-40 border p-2 rounded-lg text-sm bg-slate-50 font-medium text-slate-700"
+                    value={filters.status}
+                    onChange={e => setFilters({...filters, status: e.target.value})}
+                 >
+                     <option value="En Curso">En Curso</option>
+                     <option value="Finalizado">Finalizados</option>
+                     <option value="Todos">Todos</option>
+                 </select>
+             </div>
+        </div>
       </div>
 
       {/* --- DESKTOP TABLE VIEW (Hidden on Mobile) --- */}
@@ -161,7 +208,7 @@ export const ProjectsView = ({
                     <td className="p-3"><div className="truncate">{project.client}</div></td>
                     <td className="p-3 text-center"><button onClick={()=>handleOpenTeam(project)} className="w-8 h-8 rounded-full border hover:bg-slate-100"><Icon name="fa-users-cog"/></button></td>
                     <td className="p-3 text-xs"><div>In: {new Date(project.startDate || '').toLocaleDateString()}</div><div>Fin: {new Date(project.deadline).toLocaleDateString()}</div></td>
-                    <td className="p-3 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${project.status === 'En Curso'?'bg-green-100 text-green-700':'bg-slate-100'}`}>{project.status==='En Curso'?'Activo':'Fin'}</span></td>
+                    <td className="p-3 text-center"><span className={`px-2 py-1 rounded-full text-xs font-bold ${project.status === 'En Curso'?'bg-green-100 text-green-700':'bg-slate-200 text-slate-500'}`}>{project.status==='En Curso'?'Activo':'Fin'}</span></td>
                     <td className="p-3 text-center"><div className="flex justify-center gap-1"><button onClick={()=>triggerUpload(project.id,'drive')} className="p-1"><Icon name="fab fa-google-drive" className={project.driveLink?'text-green-600':'text-slate-300'}/></button><button onClick={()=>triggerUpload(project.id,'github')} className="p-1"><Icon name="fab fa-github" className={project.githubLink?'text-black':'text-slate-300'}/></button></div></td>
                     <td className="p-3 text-center"><div className="flex justify-center gap-1"><button onClick={()=>handleOpenEdit(project)} className="p-1.5 hover:bg-slate-100 rounded"><Icon name="fa-pen"/></button><button onClick={()=>handleOpenLog(project)} className="p-1.5 hover:bg-slate-100 rounded text-blue-500"><Icon name="fa-history"/></button><button onClick={()=>onDeleteProject(project.id)} className="p-1.5 hover:bg-slate-100 rounded text-red-500"><Icon name="fa-trash"/></button></div></td>
                   </tr>
@@ -180,7 +227,7 @@ export const ProjectsView = ({
                     <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1">{project.name}</h3>
                     <p className="text-sm text-slate-500 font-medium">{project.client}</p>
                  </div>
-                 <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${project.status === 'En Curso' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                 <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${project.status === 'En Curso' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>
                     {project.status === 'En Curso' ? 'Activo' : 'Fin'}
                  </span>
               </div>
@@ -234,6 +281,22 @@ export const ProjectsView = ({
                      <input className="w-full border p-3 rounded-lg" placeholder="Nombre Proyecto" value={showEditModal ? editProjectData.name : newProject.name} onChange={e => showEditModal ? setEditProjectData({...editProjectData, name: e.target.value}) : setNewProject({...newProject, name: e.target.value})} />
                      <input className="w-full border p-3 rounded-lg" placeholder="Cliente" value={showEditModal ? editProjectData.client : newProject.client} onChange={e => showEditModal ? setEditProjectData({...editProjectData, client: e.target.value}) : setNewProject({...newProject, client: e.target.value})} />
                  </div>
+
+                 {/* Status for Edit Mode */}
+                 {showEditModal && (
+                     <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Estado</label>
+                        <select 
+                            className="w-full border p-3 rounded-lg"
+                            value={editProjectData.status}
+                            onChange={e => setEditProjectData({...editProjectData, status: e.target.value as any})}
+                        >
+                            <option value="En Curso">En Curso</option>
+                            <option value="Finalizado">Finalizado</option>
+                            <option value="Planning">Planning</option>
+                        </select>
+                     </div>
+                 )}
 
                  {/* Dates */}
                  <div className="grid grid-cols-2 gap-4">

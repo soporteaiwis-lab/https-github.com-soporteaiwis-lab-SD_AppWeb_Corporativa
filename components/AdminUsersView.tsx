@@ -10,29 +10,23 @@ export const AdminUsersView = ({
   projects,
   onUpdateUser, 
   onDeleteUser, 
-  onAddUser 
+  onAddUser,
+  onUpdateProject // Added prop to handle project status changes
 }: { 
   users: User[], 
   projects: Project[],
   onUpdateUser: (u: User) => void, 
   onDeleteUser: (id: string) => void,
-  onAddUser: (u: User) => void
+  onAddUser: (u: User) => void,
+  onUpdateProject: (p: Project) => void
 }) => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [openProjectMenuId, setOpenProjectMenuId] = useState<string | null>(null); // Track which user's project menu is open
   
   // State for the form
   const [formData, setFormData] = useState<Partial<User>>({});
   const [passwordVisible, setPasswordVisible] = useState(false);
-
-  // Helper to find project names
-  const getUserProjectNames = (userProjectIds: string[]) => {
-      if (!userProjectIds || userProjectIds.length === 0) return "Sin asignación";
-      return userProjectIds.map(pid => {
-          const proj = projects.find(p => p.id === pid);
-          return proj ? proj.name : pid;
-      }).join(', ');
-  };
 
   const handleEdit = (user: User) => {
     setEditingUser(user);
@@ -76,6 +70,19 @@ export const AdminUsersView = ({
     setIsAdding(false);
   };
 
+  // Toggle Project Status Logic
+  const toggleProjectStatus = (projectId: string) => {
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+          const newStatus = project.status === 'En Curso' ? 'Finalizado' : 'En Curso';
+          onUpdateProject({ 
+              ...project, 
+              status: newStatus,
+              isOngoing: newStatus === 'En Curso'
+          });
+      }
+  };
+
   return (
     <div className="space-y-6 pb-24 md:pb-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-red-900/5 border border-red-900/10 p-6 rounded-xl gap-4">
@@ -90,7 +97,7 @@ export const AdminUsersView = ({
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden min-h-[400px]">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -99,7 +106,7 @@ export const AdminUsersView = ({
                 <th className="p-4 font-bold text-slate-700">Email (ID)</th>
                 <th className="p-4 font-bold text-slate-700">Contraseña</th>
                 <th className="p-4 font-bold text-slate-700">Rol</th>
-                <th className="p-4 font-bold text-slate-700">Proyectos Activos</th>
+                <th className="p-4 font-bold text-slate-700 w-64">Gestión Proyectos</th>
                 <th className="p-4 font-bold text-slate-700 text-center">Acciones</th>
               </tr>
             </thead>
@@ -121,8 +128,48 @@ export const AdminUsersView = ({
                           {user.role}
                       </span>
                   </td>
-                  <td className="p-4 text-xs text-slate-500 max-w-[200px] truncate" title={getUserProjectNames(user.projects)}>
-                      {getUserProjectNames(user.projects)}
+                  <td className="p-4 relative">
+                      {/* Project Dropdown / Combobox */}
+                      <div className="relative">
+                          <button 
+                            onClick={() => setOpenProjectMenuId(openProjectMenuId === user.id ? null : user.id)}
+                            className="w-full text-left bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold flex justify-between items-center"
+                          >
+                             <span>{user.projects.length} Proyectos Asignados</span>
+                             <Icon name="fa-chevron-down" />
+                          </button>
+                          
+                          {openProjectMenuId === user.id && (
+                              <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden animate-fade-in">
+                                  <div className="bg-slate-50 p-2 text-[10px] text-slate-500 font-bold uppercase border-b border-slate-100">
+                                      Clic para Activar/Desactivar
+                                  </div>
+                                  <div className="max-h-48 overflow-y-auto">
+                                      {user.projects.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">Sin asignaciones</div>}
+                                      {user.projects.map(pid => {
+                                          const proj = projects.find(p => p.id === pid);
+                                          if (!proj) return null;
+                                          const isActive = proj.status === 'En Curso';
+                                          return (
+                                              <button 
+                                                key={pid}
+                                                onClick={() => toggleProjectStatus(pid)}
+                                                className="w-full text-left p-3 text-xs border-b border-slate-50 hover:bg-slate-50 flex items-center justify-between group"
+                                              >
+                                                  <div className="truncate pr-2">
+                                                      <div className="font-bold text-slate-700">{proj.name}</div>
+                                                      <div className="text-[10px] text-slate-400">{proj.client}</div>
+                                                  </div>
+                                                  <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-400'}`}>
+                                                      {isActive ? 'ACTIVO' : 'OFF'}
+                                                  </div>
+                                              </button>
+                                          );
+                                      })}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                   </td>
                   <td className="p-4 text-center">
                     <div className="flex justify-center gap-2">
