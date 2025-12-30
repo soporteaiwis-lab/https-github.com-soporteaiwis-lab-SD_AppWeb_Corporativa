@@ -3,16 +3,20 @@ import { User } from '../types';
 
 export const LoginScreen = ({ users, onLogin }: { users: User[], onLogin: (u: User) => void }) => {
   const [email, setEmail] = useState('soporte.aiwis@gmail.com');
-  const [password, setPassword] = useState('1234');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const user = users.find(u => u.email === email);
-    if (user && password === '1234') {
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    
+    // Check dynamic password from user object, default to '1234' if not set yet
+    const validPassword = user?.password || '1234';
+
+    if (user && password === validPassword) {
       onLogin(user);
     } else {
-      setError('Credenciales inválidas. (Tip: contraseña es 1234)');
+      setError('Credenciales inválidas. Contacte a soporte.aiwis@gmail.com si olvidó su clave.');
     }
   };
 
@@ -31,12 +35,12 @@ export const LoginScreen = ({ users, onLogin }: { users: User[], onLogin: (u: Us
            </div>
            <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
-              <input type="password" className="w-full border p-3 rounded-lg focus:ring-2 focus:ring-simple-500 outline-none" value={password} onChange={e => setPassword(e.target.value)} />
+              <input type="password" className="w-full border p-3 rounded-lg focus:ring-2 focus:ring-simple-500 outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="Su contraseña asignada" />
            </div>
            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
            <button type="submit" className="w-full bg-simple-600 hover:bg-simple-700 text-white font-bold py-3 rounded-lg transition-colors">Ingresar</button>
         </form>
-        <div className="mt-6 text-center text-xs text-slate-400">Protected by SimpleData Auth v2.1</div>
+        <div className="mt-6 text-center text-xs text-slate-400">Protected by SimpleData Auth v3.0</div>
       </div>
     </div>
   );

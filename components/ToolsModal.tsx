@@ -24,6 +24,15 @@ export const ToolsModal = ({ onClose }: { onClose: () => void }) => {
     // FULL SCREEN ON MOBILE (z-[70]), Centered on Desktop
     <div className="fixed inset-0 z-[70] bg-slate-900/95 md:bg-slate-900/90 flex flex-col md:justify-center md:items-center backdrop-blur-md animate-fade-in">
       
+      {/* Desktop FIXED Close Button (Top Right of Screen) */}
+      <button 
+          onClick={onClose} 
+          className="hidden md:flex absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-red-500/80 rounded-full text-white items-center justify-center transition-all z-[80]"
+          title="Cerrar"
+      >
+          <Icon name="fa-times" className="text-xl" />
+      </button>
+
       {/* Mobile Sticky Header */}
       <div className="w-full md:hidden flex justify-between items-center p-4 bg-slate-800 border-b border-slate-700">
           <h2 className="text-white font-bold text-lg">Herramientas</h2>
@@ -33,11 +42,6 @@ export const ToolsModal = ({ onClose }: { onClose: () => void }) => {
       </div>
 
       <div className="w-full md:max-w-4xl relative p-4 overflow-y-auto h-full md:h-auto">
-        {/* Desktop Close Button */}
-        <button onClick={onClose} className="hidden md:block absolute -top-12 right-0 text-white/50 hover:text-white text-3xl transition-transform hover:rotate-90">
-            <Icon name="fa-times" />
-        </button>
-
         <div className="text-center mb-8 md:mb-10 text-white mt-4 md:mt-0">
             <h2 className="hidden md:block text-3xl font-bold mb-2">Herramientas & Utilidades</h2>
             <p className="text-white/60 text-sm md:text-base">Acceso rápido a tu ecosistema digital</p>

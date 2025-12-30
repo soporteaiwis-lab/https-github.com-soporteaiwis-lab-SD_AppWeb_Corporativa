@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { User, Project, ProjectLog } from '../types';
+import { User, Project, ProjectLog, UserRole } from '../types';
 import { generateText } from '../services/geminiService';
 import { UploadAssistantModal } from './UploadAssistantModal';
 
@@ -17,25 +17,29 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingUpload, setPendingUpload] = useState<{file: File, projectId: string, type: 'drive' | 'github'} | null>(null);
 
-  const allActiveProjects = projects.filter(p => p.status === 'En Curso' && (p.leadId === currentUser.id || p.teamIds?.includes(currentUser.id)));
-  const displayProjects = isGlobalMode ? projects : allActiveProjects.filter(p => p.report === true);
+  // LOGIC: If Global Mode is ON, show ALL active projects. Otherwise, show only user's projects.
+  const allSystemActiveProjects = projects.filter(p => p.status === 'En Curso');
+  const myActiveProjects = projects.filter(p => p.status === 'En Curso' && (p.leadId === currentUser.id || p.teamIds?.includes(currentUser.id)));
+  
+  const projectsToConsider = isGlobalMode ? allSystemActiveProjects : myActiveProjects;
+  const displayProjects = projectsToConsider.filter(p => isGlobalMode ? true : p.report === true); // Global shows all by default, User mode filters by selection
 
   const toggleReportInclude = (p: Project) => onUpdateProject({ ...p, report: !p.report });
 
   const handleRefineWithAI = async () => {
     if (!generalSummary.trim()) return;
     setIsAiProcessing(true);
-    // Request cleaner output for mobile
-    const refined = await generateText(generalSummary, "You are a professional editor. Refine this weekly report summary to be concise, clear, and professional in Spanish. Do not use complex markdown, just simple paragraphs.");
+    const context = isGlobalMode ? "Global Corporate Report for CEO" : "Weekly Activity Report";
+    const refined = await generateText(generalSummary, `You are a professional editor. Refine this ${context} summary to be concise, clear, and professional in Spanish. Do not use complex markdown, just simple paragraphs.`);
     setGeneralSummary(refined);
     setIsAiProcessing(false);
   };
 
   const handleAutoGenerate = () => {
-    let draft = `RESUMEN SEMANAL (${reportDate})\n\n`;
+    let draft = `RESUMEN ${isGlobalMode ? 'CORPORATIVO GLOBAL' : 'SEMANAL'} (${reportDate})\n\n`;
     displayProjects.forEach(p => {
         draft += `PROYECTO: ${p.name}\n`;
-        draft += `Estado: ${p.progress}% de avance.\n`;
+        draft += `Cliente: ${p.client} | Avance: ${p.progress}%\n`;
         if (p.logs && p.logs.length > 0) {
              draft += `Último hito: ${p.logs[p.logs.length - 1].text}\n`;
         } else {
@@ -47,14 +51,23 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
   };
 
   const handleGlobalExport = () => {
-    if (prompt("Clave CEO (1234):") === '1234') {
+    // If CEO, direct access. If not, password prompt.
+    if (currentUser.role === UserRole.CEO || prompt("Ingrese Clave Corporativa (CEO):") === '1234') {
         setIsGlobalMode(true);
-        setTimeout(() => window.print(), 800);
-    } else alert("Acceso denegado.");
+        // Force re-render with global data then print
+        setTimeout(() => {
+            alert("Modo Global Activado. Se mostrarán todos los proyectos de la empresa.");
+        }, 100);
+    } else {
+        alert("Acceso denegado. Solo el CEO o administradores pueden ver el reporte global.");
+    }
+  };
+
+  const handlePrintPDF = () => {
+      window.print();
   };
 
   const handleDownloadHTML = () => {
-    // Generate a full HTML report string dynamically
     let projectContentHTML = '';
     displayProjects.forEach(p => {
         projectContentHTML += `
@@ -79,7 +92,7 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
         <style>body { font-family: sans-serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto; }</style>
       </head>
       <body>
-        <h1 style="border-bottom: 2px solid #333; padding-bottom: 10px;">Informe de Actividades</h1>
+        <h1 style="border-bottom: 2px solid #333; padding-bottom: 10px;">${isGlobalMode ? 'Reporte Global Corporativo' : 'Informe de Actividades'}</h1>
         <p><strong>Fecha:</strong> ${reportDate} | <strong>Generado por:</strong> ${currentUser.name}</p>
         
         <div style="background: #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
@@ -87,7 +100,7 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
           <p style="white-space: pre-wrap;">${generalSummary || 'Sin resumen general.'}</p>
         </div>
 
-        <h2>Detalle de Proyectos</h2>
+        <h2>Detalle de Proyectos (${displayProjects.length})</h2>
         ${projectContentHTML || '<p>No hay proyectos en este informe.</p>'}
       </body>
       </html>
@@ -97,17 +110,9 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Informe_${reportDate}.html`;
+    a.download = `Informe_${isGlobalMode ? 'GLOBAL' : 'SimpleData'}_${reportDate}.html`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const triggerFileUpload = (projectId: string, type: 'drive' | 'github') => {
-      if (fileInputRef.current) {
-          fileInputRef.current.setAttribute('data-pid', projectId);
-          fileInputRef.current.setAttribute('data-type', type);
-          fileInputRef.current.click();
-      }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,7 +132,6 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
       if (!pendingUpload) return;
       const { file, projectId, type } = pendingUpload;
       const project = projects.find(p => p.id === projectId);
-      
       if (project) {
         const targetUrl = type === 'drive' ? (project.driveLink || 'https://drive.google.com') : (project.githubLink || 'https://github.com');
         const newLog: ProjectLog = {
@@ -175,11 +179,13 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
                   <input type="date" className="w-full border p-2 rounded-lg" value={reportDate} onChange={e => setReportDate(e.target.value)} />
                </div>
                
+               {/* Show checkboxes only in individual mode to filter specific projects */}
                {!isGlobalMode && (
                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Proyectos a Incluir</label>
                   <div className="space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-100 max-h-48 overflow-y-auto">
-                     {allActiveProjects.map(p => (
+                     {myActiveProjects.length === 0 && <p className="text-xs text-slate-400">No tienes proyectos asignados.</p>}
+                     {myActiveProjects.map(p => (
                         <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer p-1">
                            <input type="checkbox" checked={p.report} onChange={() => toggleReportInclude(p)} className="rounded text-simple-600" />
                            <span className="truncate">{p.name}</span>
@@ -189,12 +195,30 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
                </div>
                )}
 
+               {isGlobalMode && (
+                   <div className="bg-simple-50 p-3 rounded-lg border border-simple-200 text-simple-700 text-sm">
+                       <strong><Icon name="fa-globe" /> Modo Global Activo:</strong><br/>
+                       Viendo {allSystemActiveProjects.length} proyectos de toda la empresa.
+                   </div>
+               )}
+
                <button onClick={handleAutoGenerate} className="w-full py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-bold text-sm">
                   <Icon name="fa-magic" /> Autogenerar Texto
                </button>
-               <hr />
-               <button onClick={handleDownloadHTML} className="w-full py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-bold text-sm">
-                  <Icon name="fa-file-code" /> Exportar HTML Completo
+               
+               <hr className="my-2"/>
+               
+               <div className="grid grid-cols-2 gap-2">
+                   <button onClick={handlePrintPDF} className="w-full py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-bold text-sm">
+                      <Icon name="fa-print" /> Imprimir / PDF
+                   </button>
+                   <button onClick={handleDownloadHTML} className="w-full py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-bold text-sm">
+                      <Icon name="fa-file-code" /> HTML
+                   </button>
+               </div>
+
+               <button onClick={handleGlobalExport} className={`w-full py-3 rounded-lg font-bold text-sm text-white ${isGlobalMode ? 'bg-green-600 hover:bg-green-700' : 'bg-simple-900 hover:bg-simple-800'}`}>
+                  <Icon name="fa-globe" /> {isGlobalMode ? 'Actualizar Vista Global' : 'Exportar GLOBAL (CEO)'}
                </button>
             </div>
          </div>
@@ -218,22 +242,29 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
       {/* Report Preview */}
       <div className="lg:col-span-2 bg-white rounded-xl shadow-lg border border-slate-200 p-6 md:p-8 min-h-[600px] order-1 lg:order-2">
          <div className="text-center border-b-2 border-slate-800 pb-6 mb-8">
-            <h1 className="text-xl md:text-3xl font-bold text-slate-900 uppercase">{isGlobalMode ? 'REPORTE CORPORATIVO' : 'INFORME DE ACTIVIDADES'}</h1>
+            <h1 className="text-xl md:text-3xl font-bold text-slate-900 uppercase">{isGlobalMode ? 'REPORTE CORPORATIVO GLOBAL' : 'INFORME DE ACTIVIDADES'}</h1>
             <p className="text-slate-500 mt-2">SimpleData Spa - {reportDate}</p>
+            {isGlobalMode && <span className="bg-simple-900 text-white text-xs px-2 py-1 rounded mt-2 inline-block">VISTA DE GERENCIA</span>}
          </div>
 
-         {generalSummary && (
-            <div className="mb-8 bg-slate-50 p-4 rounded-lg">
-               <h3 className="text-xs font-bold text-slate-500 uppercase mb-2">Resumen</h3>
-               <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{generalSummary}</p>
-            </div>
-         )}
+         <div className="mb-8 bg-slate-50 p-4 rounded-lg">
+             <h3 className="text-xs font-bold text-slate-500 uppercase mb-2">Resumen</h3>
+             <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{generalSummary || '(Utiliza el botón Autogenerar para crear un resumen inicial)'}</p>
+         </div>
 
          <div className="space-y-6">
+             {displayProjects.length === 0 && <p className="text-center text-slate-400 py-10">No hay proyectos seleccionados para el informe.</p>}
              {displayProjects.map(project => (
                  <div key={project.id} className="border-l-4 border-simple-600 pl-4">
-                    <h4 className="text-lg font-bold text-slate-900">{project.name}</h4>
-                    <p className="text-sm text-slate-500 mb-2">Avance: {project.progress}%</p>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h4 className="text-lg font-bold text-slate-900">{project.name}</h4>
+                            <p className="text-sm text-slate-500 mb-2">Cliente: {project.client} • Avance: {project.progress}%</p>
+                        </div>
+                        <div className="flex gap-1 print:hidden">
+                            <button className="text-slate-300 hover:text-green-600"><Icon name="fab fa-google-drive" /></button>
+                        </div>
+                    </div>
                     
                     <div className="bg-slate-50 rounded-lg p-3">
                        <ul className="space-y-2 mb-3">
@@ -244,7 +275,7 @@ export const ReportsView = ({ currentUser, projects, onUpdateProject }: { curren
                                </li>
                            ))}
                        </ul>
-                       <div className="flex gap-2">
+                       <div className="flex gap-2 print:hidden">
                            <input 
                                className="flex-1 text-sm border p-2 rounded" 
                                placeholder="Nuevo hito..."

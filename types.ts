@@ -1,4 +1,6 @@
+
 export enum UserRole {
+  ADMIN = 'Super Admin',
   CEO = 'CEO',
   PROJECT_MANAGER = 'Project Manager',
   DEVELOPER = 'Developer',
@@ -11,6 +13,7 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  password?: string; // New field for authentication
   avatar: string;
   skills: { name: string; level: number }[]; // 0-100
   projects: string[]; // Project IDs
@@ -65,5 +68,6 @@ export enum AppRoute {
   GEMS = 'gems',
   TEAM = 'team',
   REPORTS = 'reports',
-  TOOLS = 'tools'
+  TOOLS = 'tools',
+  ADMIN = 'admin_panel' // New Route
 }

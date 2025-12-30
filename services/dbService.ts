@@ -2,7 +2,7 @@ import { User, Project, Gem, ProjectLog } from '../types';
 import { INITIAL_USERS, INITIAL_PROJECTS, INITIAL_GEMS } from '../constants';
 
 // Local Storage Keys
-const USERS_KEY = 'simpledata_users_v2';
+const USERS_KEY = 'simpledata_users_v3'; // Version bumped to force refresh if needed, but logic below handles merges
 const PROJECTS_KEY = 'simpledata_projects_v2';
 const GEMS_KEY = 'simpledata_gems_v1';
 
@@ -25,6 +25,16 @@ class DBService {
 
     if (savedUsers) {
       this.users = JSON.parse(savedUsers);
+      // Merge strategy: Ensure initial admins/users exist if LS was cleared or old
+      if (this.users.length < INITIAL_USERS.length) {
+          // Rudimentary merge: Add missing INITIAL users by email
+          INITIAL_USERS.forEach(initUser => {
+              if (!this.users.find(u => u.email === initUser.email)) {
+                  this.users.push(initUser);
+              }
+          });
+          this.saveUsers();
+      }
     } else {
       this.users = [...INITIAL_USERS];
       this.saveUsers();
@@ -67,6 +77,15 @@ class DBService {
     await delay(500);
     this.users.push(user);
     this.saveUsers();
+  }
+
+  async updateUser(user: User): Promise<void> {
+    await delay(300);
+    const index = this.users.findIndex(u => u.id === user.id);
+    if (index !== -1) {
+      this.users[index] = user;
+      this.saveUsers();
+    }
   }
 
   async deleteUser(userId: string): Promise<void> {

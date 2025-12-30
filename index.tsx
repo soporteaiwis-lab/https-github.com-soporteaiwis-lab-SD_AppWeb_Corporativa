@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { User, Project, AppRoute, Gem } from './types';
+import { User, Project, AppRoute, Gem, UserRole } from './types';
 import { db } from './services/dbService';
 
 // Components
@@ -11,6 +11,7 @@ import { ProjectsView } from './components/ProjectsView';
 import { GemsView } from './components/GemsView';
 import { TeamView } from './components/TeamView';
 import { ReportsView } from './components/ReportsView';
+import { AdminUsersView } from './components/AdminUsersView';
 import { ToolsModal } from './components/ToolsModal';
 import { LoginScreen } from './components/LoginScreen';
 
@@ -106,8 +107,11 @@ const App = () => {
   const handleAddProject = async (p: Project) => { await db.addProject(p); loadData(); };
   const handleUpdateProject = async (p: Project) => { await db.updateProject(p); setDbProjects(prev => prev.map(proj => proj.id === p.id ? p : proj)); };
   const handleDeleteProject = async (id: string) => { if(confirm('¿Seguro que deseas eliminar este proyecto?')) { await db.deleteProject(id); loadData(); }};
+  
   const handleAddUser = async (u: User) => { await db.addUser(u); loadData(); };
-  const handleDeleteUser = async (id: string) => { if(confirm('¿Eliminar colaborador?')) { await db.deleteUser(id); loadData(); }};
+  const handleUpdateUser = async (u: User) => { await db.updateUser(u); loadData(); };
+  const handleDeleteUser = async (id: string) => { if(confirm('¿Eliminar colaborador? Esta acción no se puede deshacer.')) { await db.deleteUser(id); loadData(); }};
+  
   const handleAddGem = async (g: Gem) => { await db.addGem(g); loadData(); };
   
   // Mobile Nav Logic for Tools
@@ -126,6 +130,9 @@ const App = () => {
     return <LoginScreen users={dbUsers} onLogin={setUser} />;
   }
 
+  // Security check for Admin Route
+  const safeRoute = (route === AppRoute.ADMIN && user.role !== UserRole.ADMIN && user.role !== UserRole.CEO) ? AppRoute.DASHBOARD : route;
+
   // Main App Layout
   return (
     <div className="min-h-screen bg-slate-100 font-sans text-slate-800">
@@ -133,26 +140,35 @@ const App = () => {
       {/* Desktop Sidebar (HIDDEN ON MOBILE via lg:flex) */}
       <Sidebar 
           currentUser={user} 
-          currentRoute={route} 
+          currentRoute={safeRoute} 
           onNavigate={handleNavigate} 
           onLogout={() => setUser(null)} 
           onOpenTools={() => setIsToolsOpen(true)}
       />
 
       {/* Main Content Area - Full width on Mobile, Padded on Desktop */}
-      {/* CAMBIO CLAVE: pl-0 lg:pl-64 */}
       <main className="pl-0 lg:pl-64 min-h-screen transition-all duration-300">
         <div className="max-w-7xl mx-auto p-4 lg:p-8">
-          {route === AppRoute.DASHBOARD && <Dashboard currentUser={user} projects={dbProjects} />}
-          {route === AppRoute.PROJECTS && <ProjectsView projects={dbProjects} users={dbUsers} currentUser={user} onAddProject={handleAddProject} onDeleteProject={handleDeleteProject} onUpdateProject={handleUpdateProject} />}
-          {route === AppRoute.GEMS && <GemsView gems={dbGems} onAddGem={handleAddGem} />}
-          {route === AppRoute.TEAM && <TeamView users={dbUsers} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} />}
-          {route === AppRoute.REPORTS && <ReportsView currentUser={user} projects={dbProjects} onUpdateProject={handleUpdateProject} />}
+          {safeRoute === AppRoute.DASHBOARD && <Dashboard currentUser={user} projects={dbProjects} />}
+          {safeRoute === AppRoute.PROJECTS && <ProjectsView projects={dbProjects} users={dbUsers} currentUser={user} onAddProject={handleAddProject} onDeleteProject={handleDeleteProject} onUpdateProject={handleUpdateProject} />}
+          {safeRoute === AppRoute.GEMS && <GemsView gems={dbGems} onAddGem={handleAddGem} />}
+          {safeRoute === AppRoute.TEAM && <TeamView users={dbUsers} onAddUser={handleAddUser} onDeleteUser={handleDeleteUser} />}
+          {safeRoute === AppRoute.REPORTS && <ReportsView currentUser={user} projects={dbProjects} onUpdateProject={handleUpdateProject} />}
+          
+          {/* Admin Panel Route */}
+          {safeRoute === AppRoute.ADMIN && (
+              <AdminUsersView 
+                  users={dbUsers} 
+                  onAddUser={handleAddUser} 
+                  onUpdateUser={handleUpdateUser} 
+                  onDeleteUser={handleDeleteUser} 
+              />
+          )}
         </div>
       </main>
 
       {/* Mobile Bottom Nav (VISIBLE ONLY ON MOBILE via lg:hidden) */}
-      <MobileNav currentRoute={route} onNavigate={handleNavigate} />
+      <MobileNav currentRoute={safeRoute} onNavigate={handleNavigate} />
 
       {/* Tools Modal (Global Overlay) */}
       {isToolsOpen && <ToolsModal onClose={() => setIsToolsOpen(false)} />}

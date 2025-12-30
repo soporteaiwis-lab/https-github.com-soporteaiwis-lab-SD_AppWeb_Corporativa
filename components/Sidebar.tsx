@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, AppRoute } from '../types';
+import { User, AppRoute, UserRole } from '../types';
 
 const Icon = ({ name, className = "" }: { name: string, className?: string }) => (
   <i className={`fa-solid ${name} ${className}`}></i>
@@ -25,6 +25,8 @@ export const Sidebar = ({
     { id: AppRoute.TEAM, label: 'Equipo', icon: 'fa-users' },
     { id: AppRoute.REPORTS, label: 'Informes', icon: 'fa-file-contract' },
   ];
+
+  const isAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO;
 
   return (
     // CAMBIO CLAVE: 'hidden lg:flex'. Solo se muestra en pantallas GRANDES (lg). Oculto en móbiles.
@@ -54,6 +56,22 @@ export const Sidebar = ({
             <span className="font-medium">{item.label}</span>
           </button>
         ))}
+        
+        {/* Admin Link - Only for Admins */}
+        {isAdmin && (
+             <button
+                onClick={() => onNavigate(AppRoute.ADMIN)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group mt-2 ${
+                  currentRoute === AppRoute.ADMIN 
+                    ? 'bg-red-900/50 text-red-200 border border-red-800' 
+                    : 'hover:bg-red-900/30 hover:text-red-200'
+                }`}
+              >
+                <Icon name="fa-user-shield" className="text-lg text-red-400" />
+                <span className="font-medium">Admin Usuarios</span>
+              </button>
+        )}
+
         {/* Tools Button separate in Desktop */}
         <button
             onClick={onOpenTools}

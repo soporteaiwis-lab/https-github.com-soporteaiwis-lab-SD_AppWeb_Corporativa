@@ -7,6 +7,7 @@ export const INITIAL_USERS: User[] = [
     name: 'Gonzalo Arias',
     role: UserRole.CEO,
     email: 'gonzalo.arias@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Gonzalo+Arias&background=0D8ABC&color=fff',
     skills: [
       { name: 'Leadership', level: 100 },
@@ -14,19 +15,20 @@ export const INITIAL_USERS: User[] = [
       { name: 'Business Intelligence', level: 90 },
       { name: 'Cloud Architecture', level: 90 }
     ],
-    projects: ['PROYECTO_001', 'PROYECTO_003']
+    projects: ['PROYECTO_001', 'PROYECTO_003', 'PROYECTO_004']
   },
   {
     id: 'u2',
     name: 'Armin Salazar',
-    role: UserRole.PROJECT_MANAGER,
+    role: UserRole.ADMIN, // Super Admin Privilege
     email: 'soporte.aiwis@gmail.com',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Armin+Salazar&background=ff0000&color=fff',
     skills: [
-      { name: 'Project Management', level: 95 },
-      { name: 'Scrum', level: 90 },
-      { name: 'Support', level: 95 },
-      { name: 'Client Relations', level: 85 }
+      { name: 'Full Stack Management', level: 100 },
+      { name: 'System Architecture', level: 100 },
+      { name: 'React & AI', level: 98 },
+      { name: 'Scrum Master', level: 95 }
     ],
     projects: ['PROYECTO_001', 'PROYECTO_002']
   },
@@ -35,6 +37,7 @@ export const INITIAL_USERS: User[] = [
     name: 'Gabriel Martinez',
     role: UserRole.DEVELOPER,
     email: 'gabriel.martinez@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Gabriel+Martinez&background=random',
     skills: [
       { name: 'Full Stack', level: 90 },
@@ -48,19 +51,21 @@ export const INITIAL_USERS: User[] = [
     name: 'Francisco Valenzuela',
     role: UserRole.DEVELOPER,
     email: 'francisco.valenzuela@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Francisco+Valenzuela&background=random',
     skills: [
       { name: 'Backend', level: 92 },
       { name: 'Python', level: 88 },
       { name: 'SQL', level: 90 }
     ],
-    projects: ['PROYECTO_001', 'PROYECTO_003']
+    projects: ['PROYECTO_003']
   },
   {
     id: 'u5',
     name: 'Anibal Alcazar',
     role: UserRole.DEVELOPER,
     email: 'anibal.alcazar@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Anibal+Alcazar&background=random',
     skills: [
       { name: 'Frontend', level: 90 },
@@ -74,19 +79,21 @@ export const INITIAL_USERS: User[] = [
     name: 'Juan Escalona',
     role: UserRole.DEVELOPER,
     email: 'juan.escalona@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Juan+Escalona&background=random',
     skills: [
       { name: 'DevOps', level: 85 },
       { name: 'Cloud Infrastructure', level: 88 },
       { name: 'Security', level: 80 }
     ],
-    projects: ['PROYECTO_003']
+    projects: ['PROYECTO_004']
   },
   {
     id: 'u7',
     name: 'Cristobal Arias',
     role: UserRole.DEVELOPER,
     email: 'cristobal.ariasb@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Cristobal+Arias&background=random',
     skills: [
       { name: 'Mobile Dev', level: 85 },
@@ -100,6 +107,7 @@ export const INITIAL_USERS: User[] = [
     name: 'Alejandro Venegas',
     role: UserRole.ANALYST,
     email: 'alejandro.venegas@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Alejandro+Venegas&background=random',
     skills: [
       { name: 'QA Automation', level: 90 },
@@ -113,6 +121,7 @@ export const INITIAL_USERS: User[] = [
     name: 'Fernando Cid',
     role: UserRole.DESIGNER,
     email: 'fernando.cid@simpledata.cl',
+    password: '1234',
     avatar: 'https://ui-avatars.com/api/?name=Fernando+Cid&background=random',
     skills: [
       { name: 'Product Design', level: 95 },
@@ -129,8 +138,8 @@ export const INITIAL_PROJECTS: Project[] = [
     name: 'Sistema de Facturación Interna',
     client: 'Interno SimpleData',
     encargadoCliente: 'Gerencia Admin',
-    leadId: 'u2',
-    teamIds: ['u3', 'u4', 'u8'],
+    leadId: 'u2', // Armin
+    teamIds: ['u3', 'u8', 'u1'], // Gabriel, Alejandro, Gonzalo
     status: 'En Curso',
     isOngoing: true,
     report: true,
@@ -152,8 +161,8 @@ export const INITIAL_PROJECTS: Project[] = [
     name: 'Desarrollo de App Móvil Clientes',
     client: 'Cliente Retail XYZ',
     encargadoCliente: 'Gerente de Innovación',
-    leadId: 'u2',
-    teamIds: ['u5', 'u7', 'u9'],
+    leadId: 'u2', // Armin
+    teamIds: ['u5', 'u7', 'u9'], // Anibal, Cristobal, Fernando
     status: 'En Curso',
     isOngoing: true,
     report: true,
@@ -169,22 +178,44 @@ export const INITIAL_PROJECTS: Project[] = [
   },
   {
     id: 'PROYECTO_003',
-    name: 'Migración de Servidores a la Nube',
+    name: 'Migración de Servidores Cloud',
     client: 'Empresa Logística ABC',
     encargadoCliente: 'Jefe de IT',
-    leadId: 'u1',
-    teamIds: ['u4', 'u6', 'u8'],
-    status: 'Finalizado',
-    isOngoing: false,
-    report: false,
+    leadId: 'u4', // Francisco Valenzuela
+    teamIds: ['u8', 'u1'], // Alejandro, Gonzalo
+    status: 'En Curso',
+    isOngoing: true,
+    report: true,
     startDate: '2024-10-01',
     deadline: '2024-12-20',
-    progress: 100,
+    progress: 80,
     year: 2024,
     description: 'Migrar la infraestructura on-premise del cliente a un entorno cloud en AWS, optimizando costos y mejorando la escalabilidad.',
     technologies: ['AWS', 'Docker', 'Linux'],
     logs: [
-       { id: 'l1', date: '2024-12-20T18:00:00', text: 'Proyecto finalizado y entregado al cliente.', author: 'Gonzalo Arias' }
+       { id: 'l1', date: '2024-12-01T18:00:00', text: 'Instancias EC2 configuradas.', author: 'Francisco Valenzuela' }
+    ],
+    driveLink: '',
+    githubLink: ''
+  },
+  {
+    id: 'PROYECTO_004',
+    name: 'Infraestructura DevSecOps',
+    client: 'Banco Financiero',
+    encargadoCliente: 'CISO',
+    leadId: 'u6', // Juan Escalona
+    teamIds: ['u1'], // Gonzalo
+    status: 'En Curso',
+    isOngoing: true,
+    report: true,
+    startDate: '2025-01-05',
+    deadline: '2025-08-20',
+    progress: 25,
+    year: 2025,
+    description: 'Implementación de pipelines de seguridad y auditoría automatizada.',
+    technologies: ['Jenkins', 'SonarQube', 'Kubernetes'],
+    logs: [
+       { id: 'l1', date: '2025-01-20T10:00:00', text: 'Pipelines base creados.', author: 'Juan Escalona' }
     ],
     driveLink: '',
     githubLink: ''
