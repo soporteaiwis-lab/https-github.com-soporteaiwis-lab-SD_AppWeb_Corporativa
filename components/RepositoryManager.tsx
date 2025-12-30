@@ -26,6 +26,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   const [githubToken, setGithubToken] = useState(envToken || localStorage.getItem('simpledata_github_pat') || '');
   const [showTokenInput, setShowTokenInput] = useState(false);
 
+  // Drive Token State (New: To manage UI state after auth)
+  const [driveToken, setDriveToken] = useState<string>('');
+
   // Add New Repo State
   const [newRepo, setNewRepo] = useState({ alias: '', url: '' });
 
@@ -38,7 +41,6 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
   // References
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const driveTokenRef = useRef<string>(''); // Store Drive Token temporarily
   const repositories = project.repositories?.filter(r => r.type === activeTab) || [];
 
   // If using manual token (not env), save to local storage
@@ -71,6 +73,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
   };
 
   const handleTriggerUpload = (repoId: string) => {
+      setSelectedRepoId(repoId);
+
       // 1. GITHUB FLOW
       if (activeTab === 'github') {
           if (!githubToken) {
@@ -78,13 +82,18 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               setShowTokenInput(true);
               return;
           }
-          setSelectedRepoId(repoId);
           if (fileInputRef.current) fileInputRef.current.click();
           return;
       }
 
-      // 2. GOOGLE DRIVE FLOW (Auth First)
+      // 2. GOOGLE DRIVE FLOW
       if (activeTab === 'drive') {
+          // If we already have a token from this session, skip Auth and go straight to file select
+          if (driveToken) {
+              if (fileInputRef.current) fileInputRef.current.click();
+              return;
+          }
+
           if (!APP_CONFIG.GOOGLE_CLIENT_ID) {
               alert("⚠️ Faltante: GOOGLE_CLIENT_ID.\n\nPara subir directo a Drive, el administrador debe configurar un Client ID de Google OAuth en el Dashboard (Icono engranaje).");
               return;
@@ -95,19 +104,22 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
              return;
           }
 
-          setSelectedRepoId(repoId);
-
-          // Trigger OAuth Popup IMMEDIATELY on click to avoid browser blocking
+          // Trigger OAuth Popup
           try {
              const client = google.accounts.oauth2.initTokenClient({
                   client_id: APP_CONFIG.GOOGLE_CLIENT_ID,
                   scope: 'https://www.googleapis.com/auth/drive.file',
                   callback: (tokenResponse: any) => {
                       if (tokenResponse && tokenResponse.access_token) {
-                          // Save token
-                          driveTokenRef.current = tokenResponse.access_token;
-                          // Now open file selector
-                          if (fileInputRef.current) fileInputRef.current.click();
+                          // 1. Save Token to State (Updates UI)
+                          setDriveToken(tokenResponse.access_token);
+                          
+                          // 2. Try to auto-open file selector
+                          // Note: Some browsers block this inside async callbacks. 
+                          // If blocked, the user will see the button change to "Seleccionar Archivo" and can click again.
+                          setTimeout(() => {
+                              if (fileInputRef.current) fileInputRef.current.click();
+                          }, 100);
                       } else {
                           console.error("No access token received from Google");
                       }
@@ -134,40 +146,40 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           if (activeTab === 'github') {
              await uploadToGitHubReal(file, repo);
           } else {
-             // Pass the token we got in the previous step
-             await uploadToDriveReal(file, repo, driveTokenRef.current);
+             // Use the state token
+             await uploadToDriveReal(file, repo, driveToken);
           }
       }
       // Reset input to allow selecting same file again
       if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // --- REAL GOOGLE DRIVE API UPLOAD (Using passed Token) ---
+  // --- REAL GOOGLE DRIVE API UPLOAD ---
   const uploadToDriveReal = async (file: File, repo: Repository, accessToken: string) => {
-      setUploadStatusMsg('Procesando subida segura...');
-      setProgress(10);
+      setUploadStatusMsg('Iniciando carga segura...');
+      setProgress(5);
 
       if (!accessToken) {
           setUploadState('error');
-          setUploadStatusMsg('Error de sesión: No se detectó el Token de Google. Intente nuevamente.');
+          setUploadStatusMsg('Sesión expirada. Por favor intente nuevamente.');
           return;
       }
 
-      // 1. Extract Folder ID from URL
+      // 1. Extract Folder ID
       let folderId = '';
       const folderMatch = repo.url.match(/(?:folders\/|id=)([\w-]+)/);
       if (folderMatch) {
           folderId = folderMatch[1];
       } else {
           setUploadState('error');
-          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL proporcionada.');
+          setUploadStatusMsg('No se pudo detectar el ID de la carpeta en la URL. Asegúrate que el link sea de una carpeta de Drive.');
           return;
       }
 
       // 2. Upload
       try {
-          setUploadStatusMsg('Subiendo archivo a Drive...');
-          setProgress(40);
+          setUploadStatusMsg('Enviando datos a Google Drive...');
+          setProgress(30);
 
           const metadata = {
               name: file.name,
@@ -178,6 +190,7 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
           form.append('file', file);
 
+          // Use XMLHttpRequest for better progress tracking if needed, but fetch is simpler for now
           const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
               method: 'POST',
               headers: {
@@ -185,6 +198,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
               },
               body: form
           });
+
+          setProgress(80);
 
           if (!response.ok) {
               const err = await response.json();
@@ -208,16 +223,16 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           setUploadStatusMsg('Conectando con GitHub API...');
           setProgress(10);
 
-          // 1. Parse Repo URL to get Owner and Repo Name
+          // 1. Parse Repo URL
           const cleanUrl = repo.url.replace(/\/$/, "").replace(/\.git$/, "");
           const match = cleanUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
           
-          if (!match) throw new Error("URL de repositorio inválida. No se pudo detectar usuario/repo.");
+          if (!match) throw new Error("URL de repositorio inválida.");
           const owner = match[1];
           const repoName = match[2];
 
           // 2. Read File as Base64
-          setUploadStatusMsg('Procesando binarios...');
+          setUploadStatusMsg('Procesando archivo...');
           const base64Content = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.readAsDataURL(file);
@@ -230,8 +245,8 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
           });
           setProgress(40);
 
-          // 3. API PUT Request (Create/Update File)
-          setUploadStatusMsg(`Subiendo ${file.name} a ${owner}/${repoName}...`);
+          // 3. API PUT Request
+          setUploadStatusMsg(`Subiendo a ${owner}/${repoName}...`);
           const apiUrl = `https://api.github.com/repos/${owner}/${repoName}/contents/${file.name}`; 
           
           const response = await fetch(apiUrl, {
@@ -251,10 +266,9 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
 
           if (!response.ok) {
               const errorData = await response.json();
-              if (response.status === 422) throw new Error("El archivo ya existe o hubo un conflicto (SHA).");
-              if (response.status === 401) throw new Error("Token inválido o expirado. Revise su configuración.");
-              if (response.status === 404) throw new Error("Repositorio no encontrado o sin permisos de escritura.");
-              throw new Error(errorData.message || "Error desconocido de GitHub.");
+              if (response.status === 422) throw new Error("El archivo ya existe.");
+              if (response.status === 401) throw new Error("Token inválido.");
+              throw new Error(errorData.message || "Error desconocido.");
           }
 
           const data = await response.json();
@@ -373,29 +387,10 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                 {/* VIEW MODE: LIST */}
                 {viewMode === 'list' && (
                     <div className="space-y-4">
-                        {activeTab === 'github' && (
-                            <div className="bg-slate-800 text-slate-300 p-4 rounded-xl mb-4 text-xs border border-slate-700">
-                                <div className="flex justify-between items-center cursor-pointer" onClick={() => !isEnvConfigured && setShowTokenInput(!showTokenInput)}>
-                                    <div className="flex items-center gap-2">
-                                        <Icon name="fa-key" className={isEnvConfigured ? "text-green-500" : "text-yellow-500"} />
-                                        <span className="font-bold text-white">Configuración API GitHub</span>
-                                        {githubToken ? <span className="text-green-400">({isEnvConfigured ? 'Cargado desde .ENV' : 'Token Activo'})</span> : <span className="text-red-400">(Requerido)</span>}
-                                    </div>
-                                    {!isEnvConfigured && <Icon name={showTokenInput ? "fa-chevron-up" : "fa-chevron-down"} />}
-                                </div>
-                                {showTokenInput && !isEnvConfigured && (
-                                    <div className="mt-3 animate-fade-in">
-                                        <p className="mb-2">Para subir archivos directo, ingresa tu <a href="https://github.com/settings/tokens" target="_blank" className="underline text-blue-400">Personal Access Token (Classic)</a> con permisos de <code>repo</code>.</p>
-                                        <input 
-                                            type="password" 
-                                            className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white font-mono"
-                                            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                                            value={githubToken}
-                                            onChange={e => setGithubToken(e.target.value)}
-                                        />
-                                        <p className="mt-1 text-slate-500">Se guardará localmente en tu navegador.</p>
-                                    </div>
-                                )}
+                        {/* Status Bar for Drive */}
+                        {activeTab === 'drive' && driveToken && (
+                            <div className="bg-green-50 text-green-700 p-3 rounded-lg flex items-center gap-2 text-xs font-bold border border-green-200 animate-fade-in mb-4">
+                                <Icon name="fa-check-circle" /> Sesión de Google Drive Activa. Listo para subir archivos.
                             </div>
                         )}
 
@@ -444,9 +439,17 @@ export const RepositoryManager = ({ project, initialType, onClose, onUpdateProje
                                         </button>
                                         <button 
                                             onClick={() => handleTriggerUpload(repo.id)}
-                                            className={`flex-1 py-2 bg-${themeColor}-600 hover:bg-${themeColor}-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm`}
+                                            className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all ${
+                                                activeTab === 'drive' && !driveToken 
+                                                    ? 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50' 
+                                                    : `bg-${themeColor}-600 hover:bg-${themeColor}-700 text-white`
+                                            }`}
                                         >
-                                            <Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir (Directo)' : 'Subir Archivo'}
+                                            {activeTab === 'drive' && !driveToken ? (
+                                                <><Icon name="fab fa-google" /> Conectar & Subir</>
+                                            ) : (
+                                                <><Icon name="fa-cloud-upload-alt" /> {activeTab === 'github' ? 'Subir' : 'Seleccionar Archivo'}</>
+                                            )}
                                         </button>
                                     </div>
                                 </div>
